@@ -19,11 +19,11 @@ public:
     TactilePad();
     ~TactilePad() override;
 
-    void _ready() override;
+    void _enter_tree() override;
     void _process(double delta) override;
     void _exit_tree() override;
 
-    // Configuration (set before the node enters the tree).
+    // Configuration (takes effect the next time the node enters the tree).
     void set_exclusive(bool v) { exclusive = v; }
     bool get_exclusive() const { return exclusive; }
 
@@ -67,6 +67,9 @@ protected:
     static void _bind_methods();
 
 private:
+    void open_context();
+    void close_context(bool notify);
+
     tactile_context *ctx = nullptr;
     tactile_controller *pad = nullptr;
     tactile_input_state state{};

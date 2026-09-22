@@ -16,6 +16,22 @@ namespace
     }
     float Axis(uint8 V) { return (static_cast<int32>(V) - 128) / 127.5f; }
     uint8 To8(float V) { return static_cast<uint8>(FMath::Clamp(V, 0.f, 1.f) * 255.f); }
+
+    // Returns a retained handle to the first controller delivering input (filling
+    // S), or nullptr. Non-blocking: get_input only copies a snapshot.
+    tactile_controller* FindReporting(tactile_context* Context, tactile_controller* Skip, tactile_input_state& S)
+    {
+        const int32 N = tactile_context_controller_count(Context);
+        for (int32 I = 0; I < N; ++I)
+        {
+            tactile_controller* C = nullptr;
+            if (tactile_context_get_controller(Context, I, &C) != TACTILE_OK || !C) { continue; }
+            S.struct_size = sizeof(S);
+            if (C != Skip && tactile_controller_get_input(C, &S) == TACTILE_OK) { return C; }
+            tactile_controller_release(C);
+        }
+        return nullptr;
+    }
 }
 
 void UTactileSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -37,16 +53,41 @@ void UTactileSubsystem::Deinitialize()
 {
     if (Pad) { tactile_controller_release(Pad); Pad = nullptr; }
     if (Context) { tactile_context_destroy(Context); Context = nullptr; }  // restores neutral output
+    Input = FTactileInputState();
+    PreviousButtons = PressedEdges = 0;
+    bConnected = false;
     Super::Deinitialize();
 }
 
 void UTactileSubsystem::Tick(float)
 {
-    if (!Pad && tactile_context_controller_count(Context) > 0) { tactile_context_get_controller(Context, 0, &Pad); }
     bool bNow = false;
     tactile_input_state S{};
     S.struct_size = sizeof(S);
     if (Pad) { bNow = tactile_controller_get_input(Pad, &S) == TACTILE_OK; }
+    bool bSwitched = false;
+    if (!bNow)
+    {
+        // The context lists every controller it has ever seen, so index 0 may be
+        // a pad that is gone for good. Follow whichever one is reporting.
+        if (tactile_controller* Live = FindReporting(Context, Pad, S))
+        {
+            bSwitched = Pad != nullptr;
+            if (Pad) { tactile_controller_release(Pad); }
+            Pad = Live;
+            bNow = true;
+        }
+        else if (!Pad && tactile_context_controller_count(Context) > 0)
+        {
+            // Nothing reporting yet: hold the first one so output calls reach it.
+            tactile_context_get_controller(Context, 0, &Pad);
+        }
+    }
+    if (bSwitched && bConnected)
+    {
+        bConnected = false;
+        OnConnectionChanged.Broadcast(false);
+    }
     if (bNow)
     {
         Input.LeftStick = FVector2D(Axis(S.left_x), Axis(S.left_y));

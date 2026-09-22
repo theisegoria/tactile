@@ -1,5 +1,6 @@
 """Hardware-free tests: ABI version, struct layouts, golden trigger bytes."""
 import ctypes as C
+import gc
 import pathlib
 import sys
 import unittest
@@ -21,6 +22,35 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(t._InputState.gyro_dps.offset, 16)
         self.assertEqual(C.sizeof(t._ControllerInfo), 44)
         self.assertEqual(C.sizeof(t.TriggerEffect), 11)
+        self.assertEqual(C.sizeof(t._HapticsMetrics), 72)
+        self.assertEqual(t._HapticsMetrics.reports_sent.offset, 8)
+        self.assertEqual(t._HapticsMetrics.wake_lateness_p99_us.offset, 32)
+        self.assertEqual(t._HapticsMetrics.pump_cpu_percent.offset, 64)
+
+    def test_metrics_annotated(self):
+        lib = t.load_library()
+        self.assertEqual(lib.tactile_haptics_get_metrics.argtypes[1], C.POINTER(t._HapticsMetrics))
+        with self.assertRaises(t.TactileError) as cm:
+            t.Controller(0).haptics_metrics()
+        self.assertEqual(cm.exception.code, t.ERR_INVALID_ARGUMENT)
+
+    def test_context_callback_swaps_keep_one_thunk(self):
+        with t.Context() as ctx:
+            thunk = ctx._thunk
+            ctx.on_event(lambda c, e: None)
+            ctx.on_event(lambda c, e: None)
+            ctx.on_event(None)
+            self.assertIs(ctx._thunk, thunk)
+        self.assertFalse(ctx._finalizer.alive)
+        ctx.close()  # idempotent
+
+    def test_dropped_context_is_destroyed(self):
+        ctx = t.Context()
+        ctx.on_event(print)
+        finalizer = ctx._finalizer
+        del ctx
+        gc.collect()
+        self.assertFalse(finalizer.alive)
 
     def test_trigger_golden(self):
         self.assertEqual(t.TriggerEffect.weapon(2, 6, 8).hex(), "25 44 00 07 00 00 00 00 00 00 00")

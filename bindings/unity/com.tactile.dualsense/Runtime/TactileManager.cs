@@ -1,7 +1,8 @@
 // Managed wrapper: a MonoBehaviour that owns the context, marshals lifecycle
-// events to the main thread and exposes the first controller.
+// events to the main thread and exposes one active controller.
 using System;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace Tactile
@@ -17,8 +18,14 @@ namespace Tactile
     public sealed class TactileController : IDisposable
     {
         IntPtr handle;
+        // Guards `handle` between WritePcm (audio thread) and Dispose (main thread),
+        // so the native handle is never released while a write is using it.
+        readonly object gate = new object();
         InputState state = NewState();
         internal TactileController(IntPtr retained) { handle = retained; }
+
+        /// <summary>The native pointer; equal for every handle to the same physical controller.</summary>
+        internal IntPtr Handle => handle;
 
         static InputState NewState() => new InputState { struct_size = 72 };
 
@@ -56,13 +63,23 @@ namespace Tactile
         public void Play(HapticEffect e, float intensity = 1f, HapticSide side = HapticSide.Both) =>
             TactileException.Check(Native.tactile_haptics_play(handle, (int)e, intensity, (int)side));
 
-        /// <summary>Feeds audio (e.g. from OnAudioFilterRead) to the voice coils. One producer thread.</summary>
-        public int WritePcm(float[] interleaved, int channels, int sampleRate) =>
-            Native.tactile_haptics_write_pcm(handle, interleaved, interleaved.Length / Math.Max(channels, 1), channels, sampleRate);
+        /// <summary>Feeds audio (e.g. from OnAudioFilterRead) to the voice coils. One producer thread.
+        /// Safe to race with Dispose: once disposed it returns Result.NotConnected.</summary>
+        public int WritePcm(float[] interleaved, int channels, int sampleRate)
+        {
+            lock (gate)
+            {
+                if (handle == IntPtr.Zero) return (int)Result.NotConnected;
+                return Native.tactile_haptics_write_pcm(handle, interleaved, interleaved.Length / Math.Max(channels, 1), channels, sampleRate);
+            }
+        }
 
         public void Dispose()
         {
-            if (handle != IntPtr.Zero) { Native.tactile_controller_release(handle); handle = IntPtr.Zero; }
+            lock (gate)
+            {
+                if (handle != IntPtr.Zero) { Native.tactile_controller_release(handle); handle = IntPtr.Zero; }
+            }
         }
     }
 
@@ -90,7 +107,11 @@ namespace Tactile
         public static TriggerEffect Machine(int start, int end, int a, int b, int freq, int period) => Build(e => (Native.tactile_trigger_machine(start, end, a, b, freq, period, ref e), e));
     }
 
-    /// <summary>Add to a GameObject. Owns the Tactile context for the scene's lifetime.</summary>
+    /// <summary>Add to a GameObject. Owns the Tactile context for the scene's lifetime.
+    /// Exposes one active controller: the first to connect, replaced by another
+    /// connected DualSense when the active one disconnects. ControllerChanged only
+    /// reports events for the active controller (and the switch to a new one).
+    /// Several managers may coexist; each has its own context and event queue.</summary>
     public sealed class TactileManager : MonoBehaviour
     {
         public bool exclusive;
@@ -98,14 +119,18 @@ namespace Tactile
         public event Action<TactileController, ControllerEvent> ControllerChanged;
 
         IntPtr context;
-        static readonly ConcurrentQueue<(IntPtr, ControllerEvent)> pending = new ConcurrentQueue<(IntPtr, ControllerEvent)>();
+        bool controllerConnected;
+        GCHandle self;  // user_data for the native callback; freed after the context is destroyed
+        readonly ConcurrentQueue<(IntPtr, ControllerEvent)> pending = new ConcurrentQueue<(IntPtr, ControllerEvent)>();
         static readonly EventCallback callback = OnNativeEvent;  // kept alive for the process lifetime
 
         [AOT.MonoPInvokeCallback(typeof(EventCallback))]
         static void OnNativeEvent(IntPtr user, IntPtr controller, int evt)
         {
+            if (user == IntPtr.Zero || controller == IntPtr.Zero) return;
+            if (!(GCHandle.FromIntPtr(user).Target is TactileManager owner)) return;
             Native.tactile_controller_retain(controller);  // released on the main thread
-            pending.Enqueue((controller, (ControllerEvent)evt));
+            owner.pending.Enqueue((controller, (ControllerEvent)evt));
         }
 
         void Awake()
@@ -119,7 +144,8 @@ namespace Tactile
             if (Native.tactile_permission_status() != (int)Permission.Granted) Native.tactile_permission_request();
             var o = new NativeOptions { struct_size = 16, mode = exclusive ? 1 : 0 };
             TactileException.Check(Native.tactile_context_create(ref o, out context));
-            Native.tactile_context_set_callback(context, callback, IntPtr.Zero);
+            self = GCHandle.Alloc(this);
+            Native.tactile_context_set_callback(context, callback, GCHandle.ToIntPtr(self));
         }
 
         void Update()
@@ -127,28 +153,72 @@ namespace Tactile
             while (pending.TryDequeue(out var item))
             {
                 var (h, evt) = item;
+                bool isActive = Controller != null && Controller.Handle == h;
                 if (evt == ControllerEvent.Disconnected)
                 {
-                    ControllerChanged?.Invoke(Controller, evt);
                     Native.tactile_controller_release(h);
+                    if (!isActive) continue;  // another controller; not the one exposed
+                    controllerConnected = false;
+                    ControllerChanged?.Invoke(Controller, evt);
+                    AdoptConnectedReplacement();
                     continue;
                 }
-                if (Controller == null) Controller = new TactileController(h);
-                else Native.tactile_controller_release(h);  // same controller or a second one; keep the first
-                ControllerChanged?.Invoke(Controller, evt);
+                if (isActive)
+                {
+                    Native.tactile_controller_release(h);
+                    controllerConnected = true;
+                    ControllerChanged?.Invoke(Controller, evt);
+                }
+                else if (Controller == null || !controllerConnected)
+                {
+                    Adopt(h, evt);  // takes over the retained handle
+                }
+                else
+                {
+                    Native.tactile_controller_release(h);  // a second controller while the active one is connected
+                }
+            }
+        }
+
+        void Adopt(IntPtr retained, ControllerEvent evt)
+        {
+            Controller?.Dispose();
+            Controller = new TactileController(retained);
+            controllerConnected = true;
+            ControllerChanged?.Invoke(Controller, evt);
+        }
+
+        // After the active controller disconnects, switches to another controller
+        // that is already connected and reporting (its Connected event came while
+        // the old one was active). Keeps the old one, awaiting reconnect, otherwise.
+        void AdoptConnectedReplacement()
+        {
+            int n = Native.tactile_context_controller_count(context);
+            for (int i = 0; i < n; i++)
+            {
+                if (Native.tactile_context_get_controller(context, i, out var c) != (int)Result.Ok || c == IntPtr.Zero) continue;
+                var probe = new InputState { struct_size = 72 };
+                if (c != Controller?.Handle && Native.tactile_controller_get_input(c, ref probe) == (int)Result.Ok)
+                {
+                    Adopt(c, ControllerEvent.Connected);
+                    return;
+                }
+                Native.tactile_controller_release(c);
             }
         }
 
         void OnDestroy()
         {
-            Controller?.Dispose();
+            Controller?.Dispose();  // waits for an in-flight WritePcm
             Controller = null;
+            controllerConnected = false;
             if (context != IntPtr.Zero)
             {
                 Native.tactile_context_set_callback(context, null, IntPtr.Zero);
-                Native.tactile_context_destroy(context);  // restores neutral output
+                Native.tactile_context_destroy(context);  // restores neutral output; no callback runs after it
                 context = IntPtr.Zero;
             }
+            if (self.IsAllocated) self.Free();
             while (pending.TryDequeue(out var item)) Native.tactile_controller_release(item.Item1);
         }
     }

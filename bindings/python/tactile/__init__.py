@@ -9,12 +9,13 @@ from __future__ import annotations
 import ctypes as C
 import os
 import pathlib
-import time
+import threading
+import weakref
 from typing import Optional, Sequence
 
 __all__ = [
     "ABI_VERSION_MAJOR", "TactileError", "Context", "Controller", "InputState", "ControllerInfo",
-    "TriggerEffect", "Button", "load_library",
+    "TriggerEffect", "Button", "HapticsMetrics", "load_library",
 ]
 
 ABI_VERSION_MAJOR = 0
@@ -70,6 +71,16 @@ class _ControllerInfo(C.Structure):
         ("address", C.c_char * 18),
         ("firmware_version", C.c_uint32), ("hardware_version", C.c_uint32),
         ("update_version", C.c_uint16), ("vibration_v2", C.c_uint8), ("connected", C.c_uint8),
+    ]
+
+
+class _HapticsMetrics(C.Structure):
+    _fields_ = [
+        ("struct_size", C.c_uint32),
+        ("reports_sent", C.c_uint64), ("reports_dropped", C.c_uint64), ("underrun_ticks", C.c_uint64),
+        ("wake_lateness_p99_us", C.c_double), ("tick_interval_stddev_us", C.c_double),
+        ("send_latency_mean_us", C.c_double), ("send_latency_p99_us", C.c_double),
+        ("pump_cpu_percent", C.c_double),
     ]
 
 
@@ -219,6 +230,7 @@ def _annotate(lib: C.CDLL) -> None:
         "tactile_haptics_stop": (i32, [vp]),
         "tactile_haptics_play": (i32, [vp, i32, C.c_float, i32]),
         "tactile_haptics_write_pcm": (i32, [vp, P(C.c_float), i32, i32, C.c_double]),
+        "tactile_haptics_get_metrics": (i32, [vp, P(_HapticsMetrics)]),
     }
     for name, (res, args) in sig.items():
         fn = getattr(lib, name)
@@ -287,16 +299,34 @@ class ControllerInfo:
         return f"<ControllerInfo {self.model} {self.transport} {self.address or '?'} update {self.update_version}>"
 
 
-class Controller:
-    """A retained controller handle. Output calls are non-blocking."""
+class HapticsMetrics:
+    """Haptics pump statistics (all zero while haptics are stopped)."""
+    __slots__ = tuple(name for name, _ in _HapticsMetrics._fields_ if name != "struct_size")
 
-    def __init__(self, handle: int):
+    def __init__(self, m: _HapticsMetrics):
+        for name in self.__slots__:
+            setattr(self, name, getattr(m, name))
+
+    def __repr__(self) -> str:
+        return "<HapticsMetrics " + " ".join(f"{n}={getattr(self, n)}" for n in self.__slots__) + ">"
+
+
+class Controller:
+    """A retained controller handle. Output calls are non-blocking.
+
+    Holds a reference to the Context it came from, so the native context (which
+    the handle needs for output) stays alive while the Controller is in use.
+    """
+
+    def __init__(self, handle: int, context: Optional["Context"] = None):
         self._h = C.c_void_p(handle)
+        self._context = context
 
     def close(self) -> None:
         if self._h:
             _lib().tactile_controller_release(self._h)
             self._h = C.c_void_p()
+        self._context = None
 
     def __del__(self):
         try:
@@ -352,15 +382,81 @@ class Controller:
         buf = (C.c_float * n)(*samples)
         return _check(_lib().tactile_haptics_write_pcm(self._h, buf, n // channels, channels, sample_rate))
 
+    def haptics_metrics(self) -> HapticsMetrics:
+        m = _HapticsMetrics(); m.struct_size = C.sizeof(m)
+        _check(_lib().tactile_haptics_get_metrics(self._h, C.byref(m)))
+        return HapticsMetrics(m)
+
+
+# Set while an event callback runs on the library's callback thread, where
+# tactile_context_destroy must not be called (it waits for that very callback).
+_callback_thread = threading.local()
+
+
+def _in_callback() -> bool:
+    return getattr(_callback_thread, "active", False)
+
+
+class _Dispatch:
+    """State shared by a Context's single event trampoline. It holds no strong
+    reference to the Context, so the trampoline never keeps it alive."""
+
+    def __init__(self, context: "Context"):
+        self.fn = None
+        self.context = weakref.ref(context)
+
+
+def _make_thunk(dispatch: _Dispatch):
+    def trampoline(_user, handle, event):
+        fn = dispatch.fn
+        if fn is None or not handle:
+            return
+        _callback_thread.active = True
+        try:
+            _lib().tactile_controller_retain(handle)
+            fn(Controller(handle, dispatch.context()), event)
+        finally:
+            _callback_thread.active = False
+
+    return _EventCallback(trampoline)
+
+
+def _destroy_native(handle: C.c_void_p, thunk) -> None:
+    """Finalizer body. Keeps `thunk` referenced until destroy has returned:
+    destroy drains queued callbacks, so only then can the closure be freed."""
+
+    def destroy():
+        _lib().tactile_context_destroy(handle)
+        del thunk_ref[:]
+
+    thunk_ref = [thunk]
+    if _in_callback():
+        # Dropped from inside a callback (destroy would wait for it forever):
+        # tear down on another thread, which waits for the callback to return.
+        threading.Thread(target=destroy, name="tactile-context-destroy", daemon=False).start()
+    else:
+        destroy()
+
 
 class Context:
-    """Discovery context. Use as a context manager; closing restores neutral output."""
+    """Discovery context. Use as a context manager; closing restores neutral output.
+
+    A Context that is dropped without close() is still destroyed (neutralizing
+    output) once it and every Controller obtained from it are garbage, or at
+    interpreter exit.
+    """
 
     def __init__(self, exclusive: bool = False, max_output_reports_per_second: float = 0):
         o = _Options(C.sizeof(_Options), MODE_EXCLUSIVE if exclusive else MODE_SHARED, max_output_reports_per_second)
         self._h = C.c_void_p()
         _check(_lib().tactile_context_create(C.byref(o), C.byref(self._h)))
-        self._cb = None  # keep the ctypes callback alive
+        # One permanent C callback per context. on_event only swaps the Python
+        # function it dispatches to, so no ctypes closure the library may still
+        # call is ever freed before tactile_context_destroy has returned.
+        self._dispatch = _Dispatch(self)
+        self._thunk = _make_thunk(self._dispatch)
+        self._installed = False
+        self._finalizer = weakref.finalize(self, _destroy_native, self._h, self._thunk)
 
     def __enter__(self) -> "Context":
         return self
@@ -369,34 +465,33 @@ class Context:
         self.close()
 
     def close(self) -> None:
-        if self._h:
-            _lib().tactile_context_destroy(self._h)
-            self._h = C.c_void_p()
-            self._cb = None
+        """Neutralizes and closes every controller. Not callable from an event callback."""
+        if not self._finalizer.alive:
+            return
+        if _in_callback():
+            raise RuntimeError("Context.close() cannot be called from an event callback")
+        self._dispatch.fn = None
+        self._finalizer()
+        self._h = C.c_void_p()
 
     def on_event(self, fn) -> None:
-        """fn(controller: Controller, event: int) runs on a library thread."""
-        if fn is None:
-            _lib().tactile_context_set_callback(self._h, _EventCallback(), None)
-            self._cb = None
-            return
-
-        def trampoline(_user, handle, event):
-            _lib().tactile_controller_retain(handle)
-            fn(Controller(handle), event)
-
-        self._cb = _EventCallback(trampoline)
-        _lib().tactile_context_set_callback(self._h, self._cb, None)
+        """fn(controller: Controller, event: int) runs on a library thread; None removes it."""
+        if not self._h:
+            raise TactileError(ERR_INVALID_ARGUMENT, "context is closed")
+        self._dispatch.fn = fn
+        if fn is not None and not self._installed:
+            _lib().tactile_context_set_callback(self._h, self._thunk, None)
+            self._installed = True
 
     def controllers(self):
         out = []
         for i in range(_lib().tactile_context_controller_count(self._h)):
             h = C.c_void_p()
             if _lib().tactile_context_get_controller(self._h, i, C.byref(h)) == OK:
-                out.append(Controller(h.value))
+                out.append(Controller(h.value, self))
         return out
 
     def wait_for_controller(self, timeout: float = 5.0) -> Controller:
         h = C.c_void_p()
         _check(_lib().tactile_context_wait_for_controller(self._h, int(timeout * 1000), C.byref(h)))
-        return Controller(h.value)
+        return Controller(h.value, self)

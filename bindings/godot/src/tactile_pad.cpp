@@ -24,10 +24,22 @@ TactilePad::TactilePad() {
 }
 
 TactilePad::~TactilePad() {
-    _exit_tree();
+    close_context(false);
 }
 
-void TactilePad::_ready() {
+// The context lives exactly while the node is in the tree: created on every
+// enter (not only the first, as _ready would be) and destroyed on every exit,
+// so a node that is removed and re-added (reparenting, pooling) keeps working.
+void TactilePad::_enter_tree() {
+    open_context();
+}
+
+void TactilePad::_exit_tree() {
+    close_context(true);
+}
+
+void TactilePad::open_context() {
+    if (ctx) return;
     if (Engine::get_singleton()->is_editor_hint()) return;
     if ((tactile_abi_version() >> 16) != TACTILE_ABI_VERSION_MAJOR) {
         UtilityFunctions::push_error("Tactile: native library ABI mismatch");
@@ -40,15 +52,64 @@ void TactilePad::_ready() {
     if (tactile_context_create(&o, &ctx) != TACTILE_OK) ctx = nullptr;
 }
 
+void TactilePad::close_context(bool notify) {
+    if (pad) {
+        tactile_controller_release(pad);
+        pad = nullptr;
+    }
+    if (ctx) {
+        tactile_context_destroy(ctx); // restores neutral output
+        ctx = nullptr;
+    }
+    const bool had_controller = was_connected;
+    std::memset(&state, 0, sizeof(state));
+    state.struct_size = sizeof(state);
+    previous_buttons = 0;
+    pressed_edges = 0;
+    was_connected = false;
+    if (notify && had_controller) emit_signal("controller_disconnected");
+}
+
+namespace {
+// Returns a retained handle to the first controller that is delivering input
+// (filling `s`), or nullptr. Non-blocking: get_input only copies a snapshot.
+tactile_controller *find_reporting(tactile_context *ctx, tactile_controller *skip, tactile_input_state &s) {
+    const int32_t n = tactile_context_controller_count(ctx);
+    for (int32_t i = 0; i < n; ++i) {
+        tactile_controller *c = nullptr;
+        if (tactile_context_get_controller(ctx, i, &c) != TACTILE_OK || !c) continue;
+        s.struct_size = sizeof(s);
+        if (c != skip && tactile_controller_get_input(c, &s) == TACTILE_OK) return c;
+        tactile_controller_release(c);
+    }
+    return nullptr;
+}
+} // namespace
+
 void TactilePad::_process(double) {
     if (!ctx) return;
-    if (!pad && tactile_context_controller_count(ctx) > 0) {
-        tactile_context_get_controller(ctx, 0, &pad);
-    }
     bool connected = false;
     if (pad) {
         state.struct_size = sizeof(state);
         connected = tactile_controller_get_input(pad, &state) == TACTILE_OK;
+    }
+    bool switched = false;
+    if (!connected) {
+        // The context lists every controller it has ever seen, so index 0 may be
+        // a pad that is gone for good. Follow whichever one is reporting.
+        if (tactile_controller *live = find_reporting(ctx, pad, state)) {
+            switched = pad != nullptr;
+            if (pad) tactile_controller_release(pad);
+            pad = live;
+            connected = true;
+        } else if (!pad && tactile_context_controller_count(ctx) > 0) {
+            // Nothing reporting yet: hold the first one so output calls reach it.
+            tactile_context_get_controller(ctx, 0, &pad);
+        }
+    }
+    if (switched && was_connected) {
+        emit_signal("controller_disconnected");
+        was_connected = false;
     }
     if (connected != was_connected) {
         was_connected = connected;
@@ -57,17 +118,9 @@ void TactilePad::_process(double) {
     uint32_t b = connected ? state.buttons : 0;
     pressed_edges = b & ~previous_buttons;
     previous_buttons = b;
-    if (!connected) std::memset(&state, 0, sizeof(state));
-}
-
-void TactilePad::_exit_tree() {
-    if (pad) {
-        tactile_controller_release(pad);
-        pad = nullptr;
-    }
-    if (ctx) {
-        tactile_context_destroy(ctx); // restores neutral output
-        ctx = nullptr;
+    if (!connected) {
+        std::memset(&state, 0, sizeof(state));
+        state.struct_size = sizeof(state);
     }
 }
 

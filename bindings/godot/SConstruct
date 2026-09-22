@@ -1,6 +1,14 @@
 #!/usr/bin/env python
-# Build: git clone -b 4.3 https://github.com/godotengine/godot-cpp && scons platform=macos
+# Build: git clone -b 4.3 https://github.com/godotengine/godot-cpp && scons platform=macos arch=arm64
 import os
+
+# godot-cpp builds a universal (x86_64 + arm64) binary on macOS unless told
+# otherwise, but a plain `swift build` of libCTactile holds only the host
+# architecture, so the x86_64 link would find no tactile_* symbols. Default to
+# the host architecture; pass arch=universal together with a universal
+# libCTactile (TACTILE_BIN, see README) to build both slices.
+if "arch" not in ARGUMENTS:
+    ARGUMENTS["arch"] = "x86_64" if os.uname().machine == "x86_64" else "arm64"
 
 env = SConscript("godot-cpp/SConstruct")
 root = Dir("#../..").abspath
@@ -8,5 +16,10 @@ env.Append(CPPPATH=["src", os.path.join(root, "Sources/CTactileHeaders/include")
 bin_dir = os.environ.get("TACTILE_BIN", os.path.join(root, ".build/out/Products/Release"))
 env.Append(LIBPATH=[bin_dir], LIBS=["CTactile"], LINKFLAGS=["-Wl,-rpath,@loader_path"])
 sources = Glob("src/*.cpp")
-library = env.SharedLibrary("demo/bin/libtactile_godot{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
+# Named without godot-cpp's arch component (env["suffix"] ends in ".<arch>") so
+# the file matches the paths listed in demo/tactile.gdextension.
+library = env.SharedLibrary(
+    "demo/bin/libtactile_godot.{}.{}{}".format(env["platform"], env["target"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
 Default(library)
