@@ -19,6 +19,11 @@ public final class HapticsMixer: @unchecked Sendable {
     }
     private let shared = Mutex(Shared())
     private var rumblePhase: (Float, Float) = (0, 0)
+    /// Jitter buffer: stream playback starts (and restarts after running dry)
+    /// only once this many frames are queued. Default 64 frames ≈ 21 ms.
+    public let streamPrefillFrames: Int
+    private var primed = false
+    private var lastAvailable = 0
     private var quantizer = Quantizer8()
     private var scratch: UnsafeMutablePointer<Float>
 
@@ -26,8 +31,9 @@ public final class HapticsMixer: @unchecked Sendable {
     public static let rumbleLeftHz: Float = 55
     public static let rumbleRightHz: Float = 160
 
-    public init(streamCapacityFrames: Int = 3000) {  // 1 s of buffer
+    public init(streamCapacityFrames: Int = 3000, streamPrefillFrames: Int = 64) {  // 1 s of buffer
         stream = SPSCRingBuffer(capacity: streamCapacityFrames * 2)
+        self.streamPrefillFrames = max(0, streamPrefillFrames)
         scratch = .allocate(capacity: HapticsFormat.bytesPerReport)
     }
 
@@ -60,9 +66,23 @@ public final class HapticsMixer: @unchecked Sendable {
     /// Missing stream audio is replaced by silence, never by stale data.
     public func render(into out: inout [Int8]) -> Int {
         let n = HapticsFormat.framesPerReport
-        let got = stream.read(into: scratch, count: n * 2)
+        let available = stream.availableToRead / 2
+        if !primed {
+            // Start once the jitter buffer is full, or when the producer has
+            // stopped adding (a short clip smaller than the prefill).
+            if available > 0, available >= streamPrefillFrames || available == lastAvailable { primed = true }
+        }
+        lastAvailable = available
+        var got = 0
+        var underrunFrames = 0
+        if primed {
+            got = stream.read(into: scratch, count: n * 2)
+            if got < n * 2 {
+                underrunFrames = (n * 2 - got) / 2
+                primed = false  // ran dry: re-buffer before resuming
+            }
+        }
         for i in got..<(n * 2) { scratch[i] = 0 }
-        let underrunFrames = (n * 2 - got) / 2
 
         var s = shared.withLock { s -> Shared in
             let copy = s

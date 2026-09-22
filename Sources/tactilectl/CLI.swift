@@ -32,6 +32,7 @@ struct CLI {
       haptic --mic [--gain G]           audio-reactive haptics from the microphone
       haptic --effect <click|detent|texture|impact> [--side left|right|both] [--repeat N]
       conflicts                         list other processes holding the controller
+      haptic-bench [seconds]            measure pump cadence/CPU with a null sink (no controller needed)
       permission                        show / request Input Monitoring
 
     Output is returned to neutral (triggers off, rumble off, lightbar restored)
@@ -61,6 +62,7 @@ struct CLI {
             case "help", "-h", "--help": print(usage)
             case "permission": permission()
             case "list": try await list()
+            case "haptic-bench": try await HapticBench.run(seconds: Double(rest.first ?? "") ?? 5)
             default:
                 let holdSeconds = hold
                 try await withController(options: options) { c in

@@ -18,13 +18,17 @@ parametric voices ──► HapticsMixer.render(32 frames) ◄── rumble emul
 ```
 
 - **Underruns send silence, never stale data.** Missing stream frames are zero-filled.
+- **Jitter buffer:** streamed audio starts once 64 frames (≈ 21 ms) are queued and
+  re-buffers after running dry (`HapticsMixer(streamPrefillFrames:)`). A clip shorter
+  than the prefill plays as soon as the producer stops adding to it. Parametric
+  effects bypass the buffer.
 - **Idle:** after 8 silent reports the pump stops sending (saves radio time) and
   resumes as soon as anything plays.
 - **Back-pressure:** at most 3 reports in flight; beyond that ticks are dropped and
   counted rather than queued, so haptics never lag behind a stalled link.
-- **Latency budget:** resampler group delay (≈ 4.5 ms at 48 kHz input) + queue
-  (whatever is buffered; file playback targets 200 ms, live taps are small) + up
-  to one 10.67 ms tick + Bluetooth.
+- **Latency budget (streamed audio):** resampler group delay 4.5 ms (48 kHz input)
+  + jitter buffer ≈ 21 ms + up to one 10.67 ms tick + HID/Bluetooth transmission.
+  File playback deliberately queues ~200 ms. Parametric effects skip the first two.
 
 ## Rumble / haptics arbitration policy
 

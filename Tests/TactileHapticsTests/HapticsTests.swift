@@ -106,7 +106,7 @@ func rms(_ x: ArraySlice<Float>) -> Float {
 
 @Suite struct MixerTests {
     @Test func underrunRendersSilence() {
-        let m = HapticsMixer()
+        let m = HapticsMixer(streamPrefillFrames: 0)
         m.stream.write([Float](repeating: 0.5, count: 20))  // 10 frames only
         var out: [Int8] = []
         let under = m.render(into: &out)
@@ -114,9 +114,31 @@ func rms(_ x: ArraySlice<Float>) -> Float {
         #expect(out.count == 64)
         #expect(out[0] != 0)
         #expect(out[20...].allSatisfy { $0 == 0 })  // never stale data
-        // Next render: nothing buffered → full silence.
-        #expect(m.render(into: &out) == 32)
+        // Next render: nothing buffered → full silence (re-buffering, not an underrun).
+        #expect(m.render(into: &out) == 0)
         #expect(out.allSatisfy { $0 == 0 })
+    }
+
+    @Test func prefillBuffersBeforePlaying() {
+        let m = HapticsMixer(streamPrefillFrames: 64)
+        var out: [Int8] = []
+        m.stream.write([Float](repeating: 0.5, count: 100))  // 50 frames < prefill
+        #expect(m.render(into: &out) == 0)
+        // Producer still adding: keep buffering.
+        m.stream.write([Float](repeating: 0.5, count: 40))  // 70 frames ≥ prefill
+        #expect(m.render(into: &out) == 0)
+        #expect(out.allSatisfy { $0 != 0 })
+        #expect(m.stream.availableToRead == 76)
+    }
+
+    @Test func shortClipBelowPrefillStillPlays() {
+        let m = HapticsMixer(streamPrefillFrames: 64)
+        var out: [Int8] = []
+        m.stream.write([Float](repeating: 0.5, count: 20))
+        _ = m.render(into: &out)  // buffering
+        #expect(out.allSatisfy { $0 == 0 })
+        _ = m.render(into: &out)  // producer stopped → play the remainder
+        #expect(out[0] != 0)
     }
 
     @Test func parametricEffectsPlayAndFinish() {
