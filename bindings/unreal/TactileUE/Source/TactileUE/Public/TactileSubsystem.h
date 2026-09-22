@@ -18,7 +18,8 @@ enum class ETactileHapticEffect : uint8 { Click = 0, Detent = 1, Texture = 2, Im
 UENUM(BlueprintType)
 enum class ETactileHapticSide : uint8 { Left = 0, Right = 1, Both = 2 };
 
-UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
+// Not BlueprintType: Blueprint enums must be uint8. Blueprints use int32 masks with BitmaskEnum.
+UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
 enum class ETactileButton : int32
 {
     None = 0 UMETA(Hidden),
@@ -48,7 +49,7 @@ struct FTactileInputState
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") FVector2D RightStick = FVector2D::ZeroVector;
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") float L2 = 0.f;
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") float R2 = 0.f;
-    UPROPERTY(BlueprintReadOnly, Category = "Tactile") int32 Buttons = 0;  // ETactileButton mask
+    UPROPERTY(BlueprintReadOnly, Category = "Tactile", meta = (Bitmask, BitmaskEnum = "/Script/TactileUE.ETactileButton")) int32 Buttons = 0;
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") FVector GyroDegPerSec = FVector::ZeroVector;
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") FVector AccelG = FVector::ZeroVector;
     UPROPERTY(BlueprintReadOnly, Category = "Tactile") int32 BatteryPercent = -1;
@@ -75,8 +76,12 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Tactile") bool IsControllerConnected() const { return bConnected; }
     UFUNCTION(BlueprintPure, Category = "Tactile") FTactileInputState GetInput() const { return Input; }
-    UFUNCTION(BlueprintPure, Category = "Tactile") bool IsButtonDown(ETactileButton Button) const { return (Input.Buttons & (int32)Button) != 0; }
-    UFUNCTION(BlueprintPure, Category = "Tactile") bool WasButtonPressed(ETactileButton Button) const { return (PressedEdges & (int32)Button) != 0; }
+    UFUNCTION(BlueprintPure, Category = "Tactile")
+    bool IsButtonMaskDown(UPARAM(meta = (Bitmask, BitmaskEnum = "/Script/TactileUE.ETactileButton")) int32 Mask) const { return (Input.Buttons & Mask) != 0; }
+    UFUNCTION(BlueprintPure, Category = "Tactile")
+    bool WasButtonMaskPressed(UPARAM(meta = (Bitmask, BitmaskEnum = "/Script/TactileUE.ETactileButton")) int32 Mask) const { return (PressedEdges & Mask) != 0; }
+    bool IsButtonDown(ETactileButton Button) const { return IsButtonMaskDown(static_cast<int32>(Button)); }
+    bool WasButtonPressed(ETactileButton Button) const { return WasButtonMaskPressed(static_cast<int32>(Button)); }
 
     UFUNCTION(BlueprintCallable, Category = "Tactile") void SetLightbar(FColor Color);
     UFUNCTION(BlueprintCallable, Category = "Tactile") void SetPlayerLeds(int32 Mask);
