@@ -10,8 +10,9 @@ player and mute LEDs, calibrated IMU, and the Edge's paddles and Fn buttons.
 It works *alongside* GameController: GameController keeps doing discovery and
 standard input; Tactile talks to the controller's HID protocol directly for the rest.
 
-> Status: pre-1.0, under active development. See `docs/receipts/` for gate reports
-> and `PROTOCOL.md` for which facts have been verified on hardware.
+> Status: 0.1.0, pre-release. All software gates (0–4) are built and unit-tested, but
+> **nothing has been verified on a controller yet** — see `docs/receipts/` and the
+> status column in `PROTOCOL.md`.
 
 ## What it can and cannot do
 
@@ -43,16 +44,23 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 ```swift
 import Tactile
 
-let manager = ControllerManager()
-for await controller in manager.controllers() {
-    try await controller.setLightbar(.init(red: 255, green: 0, blue: 128))
-    try await controller.setTrigger(.right, .weapon(start: 3, end: 6, strength: 8))
+let manager = ControllerManager()          // shared mode by default
+for await controller in manager.connectedControllers() {
+    try await controller.setLightbar(LightbarColor(red: 255, green: 0, blue: 128))
+    try await controller.setTrigger(.right, try .weapon(start: 3, end: 6, strength: 8))
+    try await controller.play(.click())      // Bluetooth audio haptics
+
+    for await event in await controller.inputEvents() {
+        if event.state.buttons.contains(.paddleLeft) { /* DualSense Edge paddle */ }
+    }
 }
 ```
 
 ```bash
-swift run tactilectl list
+swift run tactilectl permission           # grant Input Monitoring to your terminal
+swift run tactilectl info
 swift run tactilectl trigger right weapon 3 6 8
+swift run tactilectl haptic --effect click
 ```
 
 ## Documentation
