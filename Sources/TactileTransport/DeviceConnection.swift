@@ -58,11 +58,24 @@ public actor DeviceConnection {
     /// Observed input report IDs, in order of first appearance (diagnostics).
     public private(set) var observedReportIDs: [UInt8] = []
 
-    private let client: HIDDeviceClient
+    /// The CoreHID client. Released on close or disconnect: CoreHID has no
+    /// unseize call, so dropping the client is what ends an exclusive seize.
+    private var client: HIDDeviceClient?
     private var builder: OutputReportBuilder
     private var limiter: RateLimiter
     private var desired = OutputState()
     private var flushTask: Task<Void, Never>?
+    /// Identity of the current `flushTask`; bumped whenever it is replaced or
+    /// cleared so a stale deferred task cannot clobber a newer one.
+    private var flushGeneration: UInt64 = 0
+    /// Set for the whole of `close()`: no output other than the final neutral
+    /// report may be issued once closing has begun.
+    private var closing = false
+    /// Incremented each time an output report 0x31/0x02 is issued, so a neutral
+    /// send can tell whether something else went out after it.
+    private var outputSequence: UInt64 = 0
+    /// The last rumble value actually written (the motors latch it).
+    private var latchedRumble: Rumble?
     private var reassertTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
     private var subscribers: [UUID: AsyncStream<InputEvent>.Continuation] = [:]
@@ -98,15 +111,32 @@ public actor DeviceConnection {
             throw InputMonitoringPermission.status == .granted ? .deviceUnavailable : .inputMonitoringDenied
         }
         let c = DeviceConnection(client: client, info: info, options: options)
-        try await c.start()
+        try await c.start(client)
         return c
     }
 
-    private func start() async throws(TransportError) {
+    deinit {
+        flushTask?.cancel()
+        reassertTask?.cancel()
+        monitorTask?.cancel()
+    }
+
+    private func start(_ client: HIDDeviceClient) async throws(TransportError) {
         if options.mode == .exclusive {
             do { try await client.seizeDevice() } catch { throw Self.map(error) }
         }
-        startMonitoring()
+        startMonitoring(client)
+        do {
+            try await initialize()
+        } catch {
+            // Do not leave an orphaned monitor task holding the client (and
+            // with it the seize) alive after a failed open.
+            await releaseDevice()
+            throw error
+        }
+    }
+
+    private func initialize() async throws(TransportError) {
         // Firmware first so the feature set is right before any output.
         if let fw = try? await getFeatureReport(FirmwareInfo.featureReportID, length: FirmwareInfo.length) {
             firmware = try? FirmwareInfo(featureReport: fw)
@@ -126,38 +156,80 @@ public actor DeviceConnection {
             calibration = .defaults
         }
         if let j = options.journal, j.isDirty(journalKey) {
-            try? await sendNow(.neutral(restoreLightbar: options.restoreLightbar))
-            j.markClean(journalKey)
+            // Only forget the record once the neutral report actually went out;
+            // otherwise the next open (or this session's close) retries it.
+            let seq = await sendNeutral()
+            if seq != nil { j.markClean(journalKey) }
         }
         if let interval = options.reassertInterval {
             reassertTask = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: interval)
-                    await self?.reassert()
+                    guard !Task.isCancelled, let self else { return }
+                    await self.reassert()
                 }
             }
         }
     }
 
     /// Returns the controller to neutral (triggers off, rumble off, lightbar
-    /// restored), releases the device and ends all input streams.
+    /// restored), releases the device (ending an exclusive seize) and ends all
+    /// input streams.
     public func close() async {
-        guard isOpen else { return }
-        await neutralize()
-        isOpen = false
-        flushTask?.cancel()
+        guard isOpen, !closing else { return }
+        // Stop every other source of output before the neutral report, so
+        // nothing (a deferred flush, the re-assert timer, a concurrent apply)
+        // can land after it while the send is suspended.
+        closing = true
+        cancelFlush()
         reassertTask?.cancel()
-        monitorTask?.cancel()
+        reassertTask = nil
+        desired = OutputState()
+        if await sendNeutral() != nil {
+            options.journal?.markClean(journalKey)
+        }
+        // On failure the journal stays dirty so the next open neutralises.
+        isOpen = false
         finishSubscribers()
+        await releaseDevice()
     }
 
     /// Sends the neutral state now, bypassing the rate limiter, and forgets all
-    /// owned output state.
+    /// owned output state. The connection stays open.
     public func neutralize() async {
-        guard isOpen else { return }
-        try? await sendNow(.neutral(restoreLightbar: options.restoreLightbar))
+        guard isOpen, !closing else { return }
+        cancelFlush()
+        // Reset before the await so a patch applied while the send is in flight
+        // is kept rather than wiped afterwards.
         desired = OutputState()
-        options.journal?.markClean(journalKey)
+        guard let seq = await sendNeutral() else { return }
+        // Only mark clean if nothing else was sent after the neutral report.
+        if seq == outputSequence { options.journal?.markClean(journalKey) }
+    }
+
+    /// Sends the neutral report, ignoring rumble suppression (neutral must
+    /// always stop the motors). Returns its output sequence number on success.
+    private func sendNeutral() async -> UInt64? {
+        do {
+            return try await sendNow(.neutral(restoreLightbar: options.restoreLightbar), honorSuppression: false)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Cancels background tasks and drops the CoreHID client. Waits for the
+    /// monitor task (cancellation ends its notification stream) so that its
+    /// reference to the client is gone too, which ends any seize.
+    private func releaseDevice() async {
+        isOpen = false
+        cancelFlush()
+        reassertTask?.cancel()
+        reassertTask = nil
+        let monitor = monitorTask
+        monitorTask = nil
+        monitor?.cancel()
+        client = nil
+        await monitor?.value
     }
 
     // MARK: Input
@@ -184,8 +256,7 @@ public actor DeviceConnection {
         subscribers.removeAll()
     }
 
-    private func startMonitoring() {
-        let client = self.client
+    private func startMonitoring(_ client: HIDDeviceClient) {
         monitorTask = Task { [weak self] in
             do {
                 let stream = await client.monitorNotifications(
@@ -201,8 +272,11 @@ public actor DeviceConnection {
 
     private func didDisconnect() {
         isOpen = false
-        flushTask?.cancel()
+        cancelFlush()
         reassertTask?.cancel()
+        reassertTask = nil
+        monitorTask = nil
+        client = nil
         finishSubscribers()
     }
 
@@ -225,14 +299,18 @@ public actor DeviceConnection {
     /// Bluetooth CRC verified and stripped.
     public func getFeatureReport(_ id: UInt8, length: Int?) async throws(TransportError) -> [UInt8] {
         guard let rid = HIDReportID(rawValue: id) else { throw .notSupported("report ID 0") }
+        guard let client else { throw .closed }
         let data: Data
         do {
             data = try await client.dispatchGetReportRequest(type: .feature, id: rid, timeout: options.requestTimeout)
         } catch {
             throw Self.map(error)
         }
-        let expected = length.map { info.transport == .bluetooth ? $0 + 4 : $0 }
-        let bytes = FeatureReportFraming.normalize([UInt8](data), reportID: id, expectedLength: expected)
+        // The protocol lengths (41 for 0x05, 20 for 0x09, 64 for 0x20) already
+        // include the trailing CRC on Bluetooth (the Linux driver reads the CRC
+        // at length - 4), so they are passed through unchanged. Inflating them
+        // would defeat normalize()'s stripped-ID detection.
+        let bytes = FeatureReportFraming.normalize([UInt8](data), reportID: id, expectedLength: length)
         do {
             return try FeatureReportFraming.unwrap(bytes, transport: info.transport)
         } catch {
@@ -250,7 +328,7 @@ public actor DeviceConnection {
     /// Merges `patch` into the owned output state and schedules a report.
     /// Reports are rate-limited and coalesced; the latest state always goes out.
     public func apply(_ patch: OutputState) async throws(TransportError) {
-        guard isOpen else { throw .closed }
+        guard isOpen, !closing else { throw .closed }
         desired = desired.merging(patch)
         if patch.lightbar != nil, !lightbarReleased, info.transport == .bluetooth {
             desired.releaseLightbarAnimation = true
@@ -271,54 +349,87 @@ public actor DeviceConnection {
 
     /// While the audio-haptics stream runs, legacy rumble is omitted from 0x31
     /// (see docs/Haptics.md, arbitration policy).
+    ///
+    /// A cleared valid flag leaves the motors at their last value, so turning
+    /// suppression on first writes rumble off if the motors were left running;
+    /// otherwise that latched rumble would add to the mixer's emulated rumble.
     public func setRumbleSuppressed(_ suppressed: Bool) async {
+        let wasSuppressed = suppressRumble
         suppressRumble = suppressed
+        guard isOpen, !closing else { return }
+        if suppressed, !wasSuppressed, let r = latchedRumble, r != .off {
+            cancelFlush()
+            var s = desired
+            s.rumble = .off
+            _ = try? await sendNow(s, honorSuppression: false)
+            return
+        }
         try? await flush()
     }
 
     /// Re-sends the owned state (used by the re-assert timer and after conflicts).
     public func reassert() async {
-        guard isOpen, desired != OutputState() else { return }
+        guard isOpen, !closing, desired != OutputState() else { return }
         try? await flush()
     }
 
     private func flush() async throws(TransportError) {
+        guard isOpen, !closing else { throw .closed }
         let now = UInt64((clock.now - epoch).nanoseconds)
         if limiter.tryAcquire(now: now) {
-            flushTask?.cancel()
-            flushTask = nil
+            cancelFlush()
             try await sendNow(desired)
             return
         }
         guard flushTask == nil else { return }  // a deferred flush will pick up the latest state
         let delay = limiter.delayUntilAvailable(now: now)
+        flushGeneration &+= 1
+        let generation = flushGeneration
         flushTask = Task { [weak self] in
             try? await Task.sleep(for: .nanoseconds(Int64(delay)))
             guard !Task.isCancelled else { return }
-            await self?.deferredFlush()
+            await self?.deferredFlush(generation: generation)
         }
     }
 
-    private func deferredFlush() async {
+    /// Cancels and forgets the pending deferred flush, if any.
+    private func cancelFlush() {
+        flushTask?.cancel()
         flushTask = nil
+        flushGeneration &+= 1
+    }
+
+    private func deferredFlush(generation: UInt64) async {
+        // A task that passed its cancellation check just before being cancelled
+        // or replaced must not clear a newer task or send after close.
+        guard generation == flushGeneration, isOpen, !closing else { return }
+        flushTask = nil
+        flushGeneration &+= 1
         try? await flush()
     }
 
-    private func sendNow(_ state: OutputState) async throws(TransportError) {
+    /// Builds and sends an output report now, bypassing the rate limiter.
+    /// Returns the report's output sequence number.
+    @discardableResult
+    private func sendNow(_ state: OutputState, honorSuppression: Bool = true) async throws(TransportError) -> UInt64 {
         var s = state
-        if suppressRumble { s.rumble = nil }
+        if honorSuppression, suppressRumble { s.rumble = nil }
         let report = builder.build(s, transport: info.transport)
+        outputSequence &+= 1
+        let seq = outputSequence
         try await setReport(report)
+        if let r = s.rumble { latchedRumble = r }
         if s.releaseLightbarAnimation {
             lightbarReleased = true
             desired.releaseLightbarAnimation = false
         }
+        return seq
     }
 
     /// Sends an audio-haptics report 0x32 (Bluetooth only). The report must
     /// already carry a valid CRC; invalid reports are rejected, never sent.
     public func sendHapticsReport(_ report: [UInt8]) async throws(TransportError) {
-        guard isOpen else { throw .closed }
+        guard isOpen, !closing else { throw .closed }
         guard info.transport == .bluetooth else { throw .notSupported("audio haptics over USB use the USB audio interface") }
         guard report.first == HapticsFormat.reportID else { throw .notSupported("not a 0x32 report") }
         try await setReport(report)
@@ -326,6 +437,7 @@ public actor DeviceConnection {
 
     private func setReport(_ report: [UInt8]) async throws(TransportError) {
         guard let id = report.first, let rid = HIDReportID(rawValue: id) else { throw .notSupported("empty report") }
+        guard let client else { throw .closed }
         if info.transport == .bluetooth, !CRC32.verify(report, prefix: .output) {
             throw .notSupported("refusing to send a Bluetooth report without a valid CRC")
         }
