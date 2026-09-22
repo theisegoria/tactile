@@ -23,6 +23,7 @@ Before 1.0.0, minor versions may break the Swift API; the C ABI major
 - `Tactile`: `ControllerManager` and `Controller` with reconnect handling.
 - C ABI 0.1 (`tactile.h`, `libCTactile.dylib`), header check, C++ and Swift samples.
 - `tactilectl` and `tactile-probe`.
+- Engine bindings: Python (ctypes), Unity (P/Invoke), Godot 4 (GDExtension), Unreal (plugin).
 
 ### Not yet verified on hardware
 - Everything marked ⚠️/🔬 in `PROTOCOL.md`.

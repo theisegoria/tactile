@@ -20,6 +20,8 @@ jobs:
         run: swift test
       - name: C ABI header check
         run: ./scripts/check-c-abi.sh
+      - name: Python binding
+        run: swift build -c release --product CTactile && python3 bindings/python/tests/test_binding.py
       - name: C++ sample
         run: ./Samples/CppGameLoop/build.sh
       - name: Swift sample app
