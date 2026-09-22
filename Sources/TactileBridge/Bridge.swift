@@ -4,8 +4,15 @@
 // 0x09, cross-checked with the HID serial number). GameController exposes no
 // public MAC or HID identifier, so on the GameController side the bridge
 // matches by (1) uniqueness — one unmatched DualSense on each side — and
-// otherwise (2) input correlation: button edges seen by both APIs within a
-// short window. It never matches by connection order.
+// otherwise (2) input correlation: digital button transitions that leave the
+// same set of standard buttons pressed on both sides within a short window,
+// paired one-to-one. Analog motion (sticks, touchpad, trigger pressure) is
+// never counted. It never matches by connection order.
+//
+// The GameController side is sampled from `hidInput` (HID input arrives
+// continuously, every few milliseconds); the bridge never installs
+// GameController handlers, so the app's `valueChangedHandler`s and
+// `handlerQueue` are left alone.
 
 public import GameController
 public import TactileCore
@@ -24,10 +31,28 @@ public final class ControllerBridge {
     }
 
     public private(set) var matches: [ObjectIdentifier: (controller: GCController, match: Match)] = [:]
+
+    /// A digital transition: when it was seen and which standard buttons were
+    /// pressed afterwards.
+    struct Edge: Equatable {
+        var time: TimeInterval
+        var buttons: Buttons
+    }
+
+    /// The buttons both APIs report. GameController cannot see Edge paddles,
+    /// and the PS / mute / touchpad-click buttons are often system-reserved.
+    static let standardButtons: Buttons = [
+        .cross, .circle, .square, .triangle, .l1, .r1, .options, .create,
+        .dpadUp, .dpadDown, .dpadLeft, .dpadRight,
+    ]
+
     private var hidDevices: Set<MACAddress> = []
-    private var hidEdges: [MACAddress: [TimeInterval]] = [:]
-    private var gcEdges: [ObjectIdentifier: [TimeInterval]] = [:]
+    private var hidEdges: [MACAddress: [Edge]] = [:]
+    private var gcEdges: [ObjectIdentifier: [Edge]] = [:]
     private var lastHIDButtons: [MACAddress: Buttons] = [:]
+    /// DualSense GameController objects seen via connect notifications.
+    private var attached: [ObjectIdentifier: GCController] = [:]
+    private var lastGCButtons: [ObjectIdentifier: Buttons] = [:]
     private var observers: [any NSObjectProtocol] = []
     /// Called whenever a match is made or removed.
     public var onChange: (@MainActor (GCController, MACAddress?) -> Void)?
@@ -92,42 +117,72 @@ public final class ControllerBridge {
     }
 
     /// Feed every decoded HID input so the bridge can correlate button edges.
+    /// Each call also samples the GameController state of unmatched
+    /// controllers, at the same `time`.
     public func hidInput(_ address: MACAddress, buttons: Buttons, at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-        let previous = lastHIDButtons[address] ?? []
-        lastHIDButtons[address] = buttons
-        // Only standard buttons: GameController cannot see Edge paddles.
-        let standard: Buttons = [.cross, .circle, .square, .triangle, .l1, .r1, .options, .create, .dpadUp, .dpadDown, .dpadLeft, .dpadRight]
-        guard previous.intersection(standard) != buttons.intersection(standard) else { return }
-        guard isUnmatched(address) else { return }
-        hidEdges[address, default: []].append(time)
-        trim(&hidEdges[address, default: []], now: time)
-        tryCorrelationMatch(now: time)
+        var changed = sampleGameControllers(at: time)
+        let now = buttons.intersection(Self.standardButtons)
+        let previous = lastHIDButtons[address]
+        lastHIDButtons[address] = now
+        if let previous, previous != now, isUnmatched(address) {
+            hidEdges[address, default: []].append(Edge(time: time, buttons: now))
+            trim(&hidEdges[address, default: []], now: time)
+            changed = true
+        }
+        if changed { tryCorrelationMatch(now: time) }
     }
 
     // MARK: GameController side
 
     private func attach(_ c: GCController) {
         guard Self.isDualSense(c) else { return }
-        c.extendedGamepad?.valueChangedHandler = { [weak self, weak c] _, element in
-            guard let c, element is GCControllerButtonInput || element is GCControllerDirectionPad else { return }
-            MainActor.assumeIsolated { self?.gcEdge(c) }
-        }
+        attached[ObjectIdentifier(c)] = c
         tryUniqueMatch()
     }
 
     private func detach(_ c: GCController) {
         let id = ObjectIdentifier(c)
+        attached[id] = nil
         gcEdges[id] = nil
+        lastGCButtons[id] = nil
         if matches.removeValue(forKey: id) != nil { onChange?(c, nil) }
     }
 
-    private func gcEdge(_ c: GCController) {
-        let id = ObjectIdentifier(c)
-        guard matches[id] == nil else { return }
-        let now = ProcessInfo.processInfo.systemUptime
-        gcEdges[id, default: []].append(now)
-        trim(&gcEdges[id, default: []], now: now)
-        tryCorrelationMatch(now: now)
+    /// The standard buttons a GameController gamepad reports as pressed.
+    static func standardButtons(of g: GCExtendedGamepad) -> Buttons {
+        var b: Buttons = []
+        if g.buttonA.isPressed { b.insert(.cross) }
+        if g.buttonB.isPressed { b.insert(.circle) }
+        if g.buttonX.isPressed { b.insert(.square) }
+        if g.buttonY.isPressed { b.insert(.triangle) }
+        if g.leftShoulder.isPressed { b.insert(.l1) }
+        if g.rightShoulder.isPressed { b.insert(.r1) }
+        if g.buttonMenu.isPressed { b.insert(.options) }
+        if g.buttonOptions?.isPressed == true { b.insert(.create) }
+        if g.dpad.up.isPressed { b.insert(.dpadUp) }
+        if g.dpad.down.isPressed { b.insert(.dpadDown) }
+        if g.dpad.left.isPressed { b.insert(.dpadLeft) }
+        if g.dpad.right.isPressed { b.insert(.dpadRight) }
+        return b
+    }
+
+    /// Records a GameController edge for every unmatched controller whose
+    /// standard-button state changed since the last sample. Returns true if
+    /// any edge was recorded.
+    private func sampleGameControllers(at time: TimeInterval) -> Bool {
+        var recorded = false
+        for (id, c) in attached where matches[id] == nil {
+            guard let g = c.extendedGamepad else { continue }
+            let now = Self.standardButtons(of: g)
+            let previous = lastGCButtons[id]
+            lastGCButtons[id] = now
+            // The first sample is a baseline, not a transition.
+            guard let previous, previous != now else { continue }
+            gcEdges[id, default: []].append(Edge(time: time, buttons: now))
+            trim(&gcEdges[id, default: []], now: time)
+            recorded = true
+        }
+        return recorded
     }
 
     // MARK: Matching
@@ -135,7 +190,7 @@ public final class ControllerBridge {
     private func isUnmatched(_ a: MACAddress) -> Bool { !matches.values.contains { $0.match.address == a } }
 
     private var unmatchedGC: [GCController] {
-        GCController.controllers().filter { Self.isDualSense($0) && matches[ObjectIdentifier($0)] == nil }
+        attached.filter { matches[$0.key] == nil }.map(\.value)
     }
 
     private func tryUniqueMatch() {
@@ -153,9 +208,7 @@ public final class ControllerBridge {
             guard ge.count >= requiredCoincidences else { continue }
             var scores: [(MACAddress, Int)] = []
             for a in hidDevices where isUnmatched(a) {
-                let he = hidEdges[a] ?? []
-                let score = ge.filter { g in he.contains { abs($0 - g) <= correlationWindow } }.count
-                scores.append((a, score))
+                scores.append((a, Self.pairedEdges(ge, hidEdges[a] ?? [], window: correlationWindow)))
             }
             scores.sort { $0.1 > $1.1 }
             guard let best = scores.first, best.1 >= requiredCoincidences else { continue }
@@ -165,6 +218,27 @@ public final class ControllerBridge {
         }
     }
 
+    /// Number of GameController edges that can be paired one-to-one with HID
+    /// edges leaving the same buttons pressed within `window`. Each HID edge
+    /// pairs at most once (with the closest candidate), so a burst on one side
+    /// cannot score several times against a single edge on the other.
+    nonisolated static func pairedEdges(_ gc: [Edge], _ hid: [Edge], window: TimeInterval) -> Int {
+        var used = [Bool](repeating: false, count: hid.count)
+        var pairs = 0
+        for g in gc {
+            var best: (index: Int, distance: TimeInterval)?
+            for (i, h) in hid.enumerated() where !used[i] && h.buttons == g.buttons {
+                let d = abs(h.time - g.time)
+                if d <= window, d < (best?.distance ?? .infinity) { best = (i, d) }
+            }
+            if let best {
+                used[best.index] = true
+                pairs += 1
+            }
+        }
+        return pairs
+    }
+
     private func record(_ c: GCController, _ m: Match) {
         matches[ObjectIdentifier(c)] = (c, m)
         gcEdges[ObjectIdentifier(c)] = nil
@@ -172,8 +246,8 @@ public final class ControllerBridge {
         onChange?(c, m.address)
     }
 
-    private func trim(_ edges: inout [TimeInterval], now: TimeInterval) {
-        edges.removeAll { now - $0 > 10 }
+    private func trim(_ edges: inout [Edge], now: TimeInterval) {
+        edges.removeAll { now - $0.time > 10 }
         if edges.count > 64 { edges.removeFirst(edges.count - 64) }
     }
 }

@@ -14,14 +14,26 @@ public enum ControllerEvent: Sendable {
 
 /// Discovers controllers, opens them, and keeps `Controller` objects stable
 /// across disconnects and reconnects (keyed by Bluetooth address).
+///
+/// The same physical controller can appear as two HID devices at once (for
+/// example Bluetooth plus a USB cable), or a new instance can match before the
+/// old one's removal arrives. The live connection is kept; a second live
+/// instance waits as a standby and takes over when the live one is removed.
 public final class ControllerManager: Sendable {
     public let options: ConnectionOptions
     private let discovery = DeviceDiscovery()
+    private struct Standby {
+        var connection: DeviceConnection
+        var info: DeviceInfo
+    }
     private struct State {
         var byKey: [String: Controller] = [:]
         var keyByDeviceID: [UInt64: String] = [:]
+        var standby: [String: Standby] = [:]
         var task: Task<Void, Never>?
         var continuations: [UUID: AsyncStream<ControllerEvent>.Continuation] = [:]
+        /// Bumped by `shutdown()`; an open that started before it is discarded.
+        var generation: UInt64 = 0
     }
     private let state = Mutex(State())
 
@@ -31,7 +43,7 @@ public final class ControllerManager: Sendable {
 
     deinit { state.withLock { $0.task?.cancel() } }
 
-    /// All controllers seen so far, connected or not.
+    /// All controllers seen since the last `shutdown()`, connected or not.
     public var controllers: [Controller] { state.withLock { Array($0.byKey.values) } }
 
     /// Starts discovery (idempotent) and returns a stream of lifecycle events.
@@ -39,12 +51,13 @@ public final class ControllerManager: Sendable {
     public func events() -> AsyncStream<ControllerEvent> {
         let (stream, cont) = AsyncStream<ControllerEvent>.makeStream()
         let id = UUID()
-        let existing = state.withLock { s -> [Controller] in
-            s.continuations[id] = cont
-            return s.byKey.values.filter(\.isConnected)
-        }
-        for c in existing { cont.yield(.connected(c)) }
         cont.onTermination = { [weak self] _ in self?.state.withLock { _ = $0.continuations.removeValue(forKey: id) } }
+        // Registration, replay and every emitted event share one lock, so each
+        // controller is announced exactly once and in order.
+        state.withLock { s in
+            s.continuations[id] = cont
+            for c in s.byKey.values where c.isConnected { cont.yield(.connected(c)) }
+        }
         start()
         return stream
     }
@@ -89,19 +102,31 @@ public final class ControllerManager: Sendable {
     }
 
     /// Closes every controller (restoring neutral output) and stops discovery.
+    /// Waits for the discovery task to end, so no controller opened concurrently
+    /// is left behind. Event streams end; a later `events()` starts a fresh
+    /// session in which controllers are announced again as new objects.
     public func shutdown() async {
-        let (all, task) = state.withLock { s in (Array(s.byKey.values), s.task) }
-        task?.cancel()
-        for c in all { await c.close() }
-        state.withLock { s in
+        let (all, standby, task) = state.withLock { s in
+            s.generation &+= 1
+            let r = (Array(s.byKey.values), Array(s.standby.values), s.task)
+            s.byKey.removeAll()
+            s.keyByDeviceID.removeAll()
+            s.standby.removeAll()
+            s.task = nil
             for c in s.continuations.values { c.finish() }
             s.continuations.removeAll()
-            s.task = nil
+            return r
         }
+        task?.cancel()
+        await task?.value
+        for c in all { await c.close() }
+        for sb in standby { await sb.connection.close() }
     }
 
     private func emit(_ e: ControllerEvent) {
-        for c in state.withLock({ Array($0.continuations.values) }) { c.yield(e) }
+        state.withLock { s in
+            for c in s.continuations.values { c.yield(e) }
+        }
     }
 
     private func run() async {
@@ -111,13 +136,21 @@ public final class ControllerManager: Sendable {
                 case .connected(let info, let ref):
                     await handleConnect(info, ref)
                 case .disconnected(let deviceID):
-                    handleDisconnect(deviceID)
+                    await handleDisconnect(deviceID)
                 }
             }
         } catch {}
     }
 
+    private enum ConnectOutcome {
+        case discard
+        case created
+        case standby(live: DeviceConnection, replaced: DeviceConnection?)
+        case replace(Controller)
+    }
+
     private func handleConnect(_ info: DeviceInfo, _ ref: HIDDeviceClientReference) async {
+        let generation = state.withLock { $0.generation }
         let conn: DeviceConnection
         do {
             conn = try await DeviceConnection.open(ref, info: info, options: options)
@@ -126,28 +159,81 @@ public final class ControllerManager: Sendable {
             return
         }
         let key = await conn.address?.description ?? info.serialNumber ?? "id-\(info.deviceID)"
-        let (existing, created) = state.withLock { s -> (Controller?, Controller?) in
+        let current = state.withLock { $0.byKey[key]?.connection }
+        let currentAlive = await current?.isOpen ?? false
+        let outcome = state.withLock { s -> ConnectOutcome in
+            // shutdown() ran while this device was being opened.
+            guard s.generation == generation else { return .discard }
             s.keyByDeviceID[info.deviceID] = key
-            if let c = s.byKey[key] { return (c, nil) }
-            let c = Controller(connection: conn, info: info, id: key)
-            s.byKey[key] = c
-            return (nil, c)
+            guard let c = s.byKey[key] else {
+                let c = Controller(connection: conn, info: info, id: key)
+                s.byKey[key] = c
+                // Announced under the lock that inserted it, so a concurrent
+                // events() sees it either in its replay or here, never both.
+                for k in s.continuations.values { k.yield(.connected(c)) }
+                return .created
+            }
+            // The controller is still live on another instance (e.g. Bluetooth
+            // plus USB): keep that one and hold this one in reserve.
+            if currentAlive, let live = current, c.connection === live {
+                let old = s.standby.updateValue(Standby(connection: conn, info: info), forKey: key)
+                return .standby(live: live, replaced: old?.connection)
+            }
+            return .replace(c)
         }
-        if let existing {
-            await existing.replaceConnection(conn, info: info)
-            emit(.reconnected(existing))
-        } else if let created {
-            emit(.connected(created))
+        switch outcome {
+        case .discard:
+            await conn.close()
+        case .created:
+            break
+        case .standby(let live, let replaced):
+            await replaced?.close()
+            // Opening (or closing) another instance may have sent a neutral
+            // report to the same physical controller: restore the live state
+            // (through apply, so the crash journal is marked dirty again).
+            try? await live.apply(OutputState())
+        case .replace(let c):
+            await c.replaceConnection(conn, info: info)
+            emit(.reconnected(c))
         }
     }
 
-    private func handleDisconnect(_ deviceID: UInt64) {
-        let c = state.withLock { s -> Controller? in
-            guard let key = s.keyByDeviceID.removeValue(forKey: deviceID) else { return nil }
-            return s.byKey[key]
+    private enum DisconnectOutcome {
+        case ignore
+        case dropStandby(DeviceConnection)
+        case lost(Controller, Standby?)
+    }
+
+    private func handleDisconnect(_ deviceID: UInt64) async {
+        let outcome = state.withLock { s -> DisconnectOutcome in
+            guard let key = s.keyByDeviceID.removeValue(forKey: deviceID) else { return .ignore }
+            if let sb = s.standby[key], sb.info.deviceID == deviceID {
+                s.standby[key] = nil
+                return .dropStandby(sb.connection)
+            }
+            // Only the removal of the live instance disconnects the controller;
+            // a late removal of an instance it already replaced is ignored.
+            guard let c = s.byKey[key], c.liveDeviceID == deviceID else { return .ignore }
+            return .lost(c, s.standby.removeValue(forKey: key))
         }
-        guard let c else { return }
-        c.connectionLost()
-        emit(.disconnected(c))
+        switch outcome {
+        case .ignore:
+            return
+        case .dropStandby(let conn):
+            await conn.close()
+        case .lost(let c, let standby):
+            guard c.connectionLost(deviceID: deviceID) else {
+                // Closed by the app meanwhile.
+                await standby?.connection.close()
+                return
+            }
+            if let standby, await standby.connection.isOpen {
+                await c.replaceConnection(standby.connection, info: standby.info)
+                emit(.reconnected(c))
+            } else {
+                await standby?.connection.close()
+                emit(.disconnected(c))
+            }
+        }
     }
 }
