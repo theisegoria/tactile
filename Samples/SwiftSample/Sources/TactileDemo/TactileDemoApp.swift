@@ -7,14 +7,42 @@ import Tactile
 
 @main
 struct TactileDemoApp: App {
-    @State private var model = DemoModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Tactile Demo") {
-            ContentView(model: model)
+        Window("Tactile Demo", id: "main") {
+            ContentView(model: appDelegate.model)
                 .frame(minWidth: 520, minHeight: 560)
-                .task { await model.run() }
+                .task { await appDelegate.model.run() }
         }
+    }
+}
+
+/// Owns the model so that quitting can restore neutral output first: the
+/// library installs no exit hook, and a plain Cmd-Q would otherwise leave the
+/// triggers, lightbar and LEDs in whatever state the demo last set.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let model = DemoModel()
+    private var terminating = false
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminating else { return .terminateLater }
+        terminating = true
+        let model = model
+        Task { @MainActor in
+            // Bounded: never hang the quit on a stuck controller.
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await model.shutdown() }
+                group.addTask { try? await Task.sleep(for: .seconds(2)) }
+                await group.next()
+                group.cancelAll()
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
 
@@ -32,6 +60,10 @@ final class DemoModel {
 
     private let manager = ControllerManager()
     private let bridge = ControllerBridge()
+    /// Addresses reported to the bridge, by controller. `Controller.address`
+    /// is already nil when `.disconnected` arrives (the connection is gone),
+    /// so the address to withdraw from the bridge has to be remembered here.
+    private var bridgedAddresses: [Controller.ID: MACAddress] = [:]
 
     func run() async {
         if permission != .granted { InputMonitoringPermission.request() }
@@ -44,16 +76,29 @@ final class DemoModel {
             case .connected(let c), .reconnected(let c):
                 controller = c
                 status = "\(c.model.displayName) connected over \(c.transport.rawValue)"
-                if let a = await c.address { bridge.hidDeviceConnected(a) }
+                if let a = await c.address {
+                    if let old = bridgedAddresses[c.id], old != a { bridge.hidDeviceDisconnected(old) }
+                    bridgedAddresses[c.id] = a
+                    bridge.hidDeviceConnected(a)
+                }
                 Task { await self.consume(c) }
             case .disconnected(let c):
                 status = "\(c.model.displayName) disconnected"
-                if let a = await c.address { bridge.hidDeviceDisconnected(a) }
+                if let a = bridgedAddresses.removeValue(forKey: c.id) { bridge.hidDeviceDisconnected(a) }
             case .failed(_, let error):
                 status = "\(error)"
                 permission = InputMonitoringPermission.status
             }
         }
+    }
+
+    /// Closes every controller, restoring neutral output (triggers off, rumble
+    /// off, lightbar and LEDs restored). Called before the app quits.
+    func shutdown() async {
+        controller = nil
+        for a in bridgedAddresses.values { bridge.hidDeviceDisconnected(a) }
+        bridgedAddresses.removeAll()
+        await manager.shutdown()
     }
 
     private func consume(_ c: Controller) async {

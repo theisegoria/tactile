@@ -36,6 +36,11 @@ extension Probe {
             l.setModeWeaponWithStartPosition(0.2, endPosition: 0.6, resistiveStrength: 1.0)
             try? await Task.sleep(for: .seconds(0.3))
             log("  setMode R=feedback L=weapon → read back R.mode=\(r.mode.rawValue) status=\(r.status.rawValue) arm=\(r.armPosition); L.mode=\(l.mode.rawValue) status=\(l.status.rawValue)")
+            // The engine and player must outlive the observation window: a
+            // released CHHapticEngine stops, cutting the event off and turning
+            // this probe into a false negative.
+            var hapticEngine: CHHapticEngine?
+            var hapticPlayer: (any CHHapticPatternPlayer)?
             if let engine = c.haptics?.createEngine(withLocality: .default) {
                 do {
                     try await engine.start()
@@ -43,8 +48,10 @@ extension Probe {
                         CHHapticEventParameter(parameterID: .hapticIntensity, value: 1),
                     ], relativeTime: 0, duration: 0.3)
                     let player = try engine.makePlayer(with: try CHHapticPattern(events: [e], parameters: []))
-                    try player.start(atTime: 0)
-                    log("  Core Haptics engine started and played a 300 ms continuous event")
+                    hapticEngine = engine
+                    hapticPlayer = player
+                    try player.start(atTime: CHHapticTimeImmediate)
+                    log("  Core Haptics engine started a 300 ms continuous event")
                 } catch {
                     log("  Core Haptics failed: \(error)")
                 }
@@ -53,6 +60,8 @@ extension Probe {
             }
             log("  Observe the controller for \(Int(seconds)) s: does the lightbar turn magenta? are triggers stiff?")
             try? await Task.sleep(for: .seconds(seconds))
+            try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
+            if let hapticEngine { try? await hapticEngine.stop() }
             r.setModeOff(); l.setModeOff()
             try? await Task.sleep(for: .seconds(0.2))
         }

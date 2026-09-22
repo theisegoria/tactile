@@ -17,9 +17,9 @@ struct Probe {
         log("Input Monitoring: \(InputMonitoringPermission.status.rawValue)")
         switch cmd {
         case "list": await list()
-        case "reports": await reports(seconds: Double(args.dropFirst().first ?? "") ?? 3)
+        case "reports": await reports(seconds: seconds(args, default: 3))
         case "features": await features()
-        case "gc": await gameController(seconds: Double(args.dropFirst().first ?? "") ?? 8)
+        case "gc": await gameController(seconds: seconds(args, default: 8))
         case "conflicts": await conflicts()
         case "request-permission":
             log("IOHIDRequestAccess → \(InputMonitoringPermission.request())")
@@ -34,6 +34,13 @@ struct Probe {
               request-permission   trigger the Input Monitoring prompt
             """)
         }
+    }
+
+    /// The optional seconds argument, clamped to 0…3600. `Duration.seconds(_:)`
+    /// and `Int(_:)` trap on non-finite or huge values such as "inf" or "1e40".
+    static func seconds(_ args: [String], default d: Double) -> Double {
+        guard let v = args.dropFirst().first.flatMap(Double.init), v.isFinite else { return d }
+        return min(max(v, 0), 3600)
     }
 
     static func log(_ s: String) {

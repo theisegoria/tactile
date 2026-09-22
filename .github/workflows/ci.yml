@@ -25,7 +25,13 @@ jobs:
       - name: C++ sample
         run: ./Samples/CppGameLoop/build.sh
       - name: Swift sample app
-        run: ./Samples/SwiftSample/bundle.sh
+        run: ./Samples/SwiftSample/bundle.sh && test -d Samples/SwiftSample/.build/TactileDemo.app
+      - name: Swift sample resolves from a differently named checkout
+        run: |
+          dest="$RUNNER_TEMP/renamed checkout"
+          mkdir -p "$dest"
+          rsync -a --exclude .build --exclude .git ./ "$dest/"
+          cd "$dest/Samples/SwiftSample" && swift package describe >/dev/null
       - name: XCFramework
         run: ./scripts/build-xcframework.sh
       - uses: actions/upload-artifact@v4

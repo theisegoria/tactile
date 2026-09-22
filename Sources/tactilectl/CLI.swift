@@ -48,21 +48,22 @@ struct CLI {
             options.mode = .exclusive
             args.remove(at: i)
         }
-        if let i = args.firstIndex(of: "--hold"), i + 1 < args.count {
-            hold = Double(args[i + 1])
-            args.removeSubrange(i...(i + 1))
-        }
-        guard let cmd = args.first else {
-            print(usage)
-            return
-        }
-        let rest = Array(args.dropFirst())
         do {
+            if let i = args.firstIndex(of: "--hold") {
+                guard i + 1 < args.count else { throw CLIError("--hold needs a value") }
+                hold = try Commands.parseSeconds(args[i + 1], "--hold")
+                args.removeSubrange(i...(i + 1))
+            }
+            guard let cmd = args.first else {
+                print(usage)
+                return
+            }
+            let rest = Array(args.dropFirst())
             switch cmd {
             case "help", "-h", "--help": print(usage)
             case "permission": permission()
             case "list": try await list()
-            case "haptic-bench": try await HapticBench.run(seconds: Double(rest.first ?? "") ?? 5)
+            case "haptic-bench": try await HapticBench.run(seconds: try rest.first.map { try Commands.parseSeconds($0, "haptic-bench seconds") } ?? 5)
             default:
                 let holdSeconds = hold
                 try await withController(options: options) { c in
@@ -142,10 +143,11 @@ struct CLI {
         case "leds": try await Commands.leds(c, a); try await Commands.hold(hold ?? 3)
         case "trigger": try await Commands.trigger(c, a); try await Commands.hold(hold ?? 5)
         case "rumble":
-            guard a.count >= 2, let l = UInt8(a[0]), let r = UInt8(a[1]) else { throw CLIError("usage: rumble LEFT RIGHT [seconds]") }
+            guard a.count >= 2, a.count <= 3, let l = UInt8(a[0]), let r = UInt8(a[1]) else { throw CLIError("usage: rumble LEFT RIGHT [seconds]") }
+            let seconds = try a.count > 2 ? Commands.parseSeconds(a[2], "rumble seconds") : (hold ?? 1)
             try await c.setRumble(Rumble(left: l, right: r))
             print("rumble L=\(l) R=\(r)")
-            try await Commands.hold(a.count > 2 ? Double(a[2]) ?? 1 : (hold ?? 1))
+            try await Commands.hold(seconds)
         case "haptic": try await Commands.haptic(c, a)
         case "conflicts": Commands.conflicts(c)
         default: throw CLIError("unknown command '\(cmd)'\n\n\(usage)")
