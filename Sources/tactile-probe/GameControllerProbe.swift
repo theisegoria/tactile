@@ -43,7 +43,7 @@ extension Probe {
             var hapticPlayer: (any CHHapticPatternPlayer)?
             if let engine = c.haptics?.createEngine(withLocality: .default) {
                 do {
-                    try await engine.start()
+                    try startEngine(engine)
                     let e = CHHapticEvent(eventType: .hapticContinuous, parameters: [
                         CHHapticEventParameter(parameterID: .hapticIntensity, value: 1),
                     ], relativeTime: 0, duration: 0.3)
@@ -61,9 +61,19 @@ extension Probe {
             log("  Observe the controller for \(Int(seconds)) s: does the lightbar turn magenta? are triggers stiff?")
             try? await Task.sleep(for: .seconds(seconds))
             try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-            if let hapticEngine { try? await hapticEngine.stop() }
+            if let hapticEngine { stopEngine(hapticEngine) }
             r.setModeOff(); l.setModeOff()
             try? await Task.sleep(for: .seconds(0.2))
         }
     }
+}
+
+// Synchronous wrappers: the async overloads send the non-Sendable engine off
+// the main actor, which Swift 6.1 rejects.
+private func startEngine(_ engine: CHHapticEngine) throws {
+    try engine.start()
+}
+
+private func stopEngine(_ engine: CHHapticEngine) {
+    engine.stop(completionHandler: nil)
 }
