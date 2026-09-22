@@ -24,8 +24,10 @@ public struct Quantizer8: Sendable {
     }
 
     /// Maps [-1, 1] to [-127, 127] (symmetric; -128 unused) with ±1 LSB TPDF dither.
+    /// Out-of-range values (including ±infinity) saturate; NaN maps to 0.
     @inline(__always)
     public mutating func quantize(_ x: Float) -> Int8 {
+        guard !x.isNaN else { return 0 }
         var v = x * 127
         if dither, x != 0 { v += rng.unit() + rng.unit() }
         v = v.rounded()

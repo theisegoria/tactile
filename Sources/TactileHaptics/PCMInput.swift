@@ -22,12 +22,26 @@ public final class PCMInput: @unchecked Sendable {
         right = StreamingResampler(inputRate: inputRate)
     }
 
-    /// Resets filters for a new input rate.
+    /// Resets filters for a new input rate. Rates outside
+    /// `StreamingResampler.supportedRates` are clamped by the resampler.
     public func reconfigure(inputRate: Double) {
         guard inputRate != self.inputRate else { return }
         self.inputRate = inputRate
         left = StreamingResampler(inputRate: inputRate)
         right = StreamingResampler(inputRate: inputRate)
+    }
+
+    /// Ends the current stream: writes the resampler tail (the last
+    /// `latencyMs` of audio, otherwise held back waiting for look-ahead) and
+    /// resets the filters. Call when a clip or stream finishes. Returns the
+    /// number of 3 kHz frames written.
+    @discardableResult
+    public func flush() -> Int {
+        outL.removeAll(keepingCapacity: true)
+        outR.removeAll(keepingCapacity: true)
+        left.flush(into: &outL)
+        right.flush(into: &outR)
+        return writeInterleaved()
     }
 
     /// Filter delay in milliseconds.
@@ -43,6 +57,10 @@ public final class PCMInput: @unchecked Sendable {
         outR.removeAll(keepingCapacity: true)
         left.process(first, into: &outL)
         right.process(second, into: &outR)
+        return writeInterleaved()
+    }
+
+    private func writeInterleaved() -> Int {
         let n = min(outL.count, outR.count)
         interleaved.removeAll(keepingCapacity: true)
         interleaved.reserveCapacity(n * 2)

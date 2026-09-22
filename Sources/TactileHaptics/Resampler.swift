@@ -5,6 +5,21 @@
 import Foundation
 
 public struct StreamingResampler: Sendable {
+    /// Sample rates the resampler accepts. Anything outside (including zero,
+    /// negative, NaN and infinite rates) is replaced by the nearest bound, or by
+    /// the output rate when not a number, so a bad rate can never trap, hang or
+    /// allocate without bound.
+    public static let supportedRates: ClosedRange<Double> = 1...768_000
+
+    /// True if `rate` is a finite rate within `supportedRates`.
+    public static func isSupported(rate: Double) -> Bool { supportedRates.contains(rate) }
+
+    static func sanitize(_ rate: Double, fallback: Double) -> Double {
+        if rate.isNaN { return fallback }
+        return min(max(rate, supportedRates.lowerBound), supportedRates.upperBound)
+    }
+
+    /// The rates actually used, after clamping to `supportedRates`.
     public let inputRate: Double
     public let outputRate: Double
     /// Zero crossings of the sinc on each side (quality/cost trade-off).
@@ -19,6 +34,9 @@ public struct StreamingResampler: Sendable {
     private var nextOut: Double    // input-sample position of next output
 
     public init(inputRate: Double, outputRate: Double = 3000, halfWidth: Int = 12) {
+        let outputRate = Self.sanitize(outputRate, fallback: 3000)
+        let inputRate = Self.sanitize(inputRate, fallback: outputRate)
+        let halfWidth = min(max(halfWidth, 1), 64)
         self.inputRate = inputRate
         self.outputRate = outputRate
         self.halfWidth = halfWidth
@@ -56,23 +74,42 @@ public struct StreamingResampler: Sendable {
     /// Feeds input samples and appends any produced output samples to `out`.
     public mutating func process(_ input: UnsafeBufferPointer<Float>, into out: inout [Float]) {
         for x in input {
-            history[head] = x
+            // A non-finite sample would poison every output whose window spans
+            // it (and NaN would reach the quantizer); treat it as silence.
+            history[head] = x.isFinite ? x : 0
             head = head + 1 == history.count ? 0 : head + 1
             written += 1
             // Produce every output whose kernel window is fully available.
             while nextOut + Double(radius) <= Double(written - 1) {
-                let center = nextOut
-                let base = Int64(center.rounded(.down))
-                var acc = 0.0
-                var k = base - Int64(radius) + 1
-                while k <= base + Int64(radius) {
-                    acc += Double(sample(at: k)) * kernel(Double(k) - center)
-                    k += 1
-                }
-                out.append(Float(acc))
-                nextOut += step
+                emit(into: &out)
             }
         }
+    }
+
+    private mutating func emit(into out: inout [Float]) {
+        let center = nextOut
+        let base = Int64(center.rounded(.down))
+        var acc = 0.0
+        var k = base - Int64(radius) + 1
+        while k <= base + Int64(radius) {
+            acc += Double(sample(at: k)) * kernel(Double(k) - center)
+            k += 1
+        }
+        out.append(Float(acc))
+        nextOut += step
+    }
+
+    /// Ends the stream: emits the outputs still waiting for look-ahead (the
+    /// last `latencyOutputSamples`, with silence assumed after the final input)
+    /// and resets the resampler so the next `process` starts a new stream.
+    public mutating func flush(into out: inout [Float]) {
+        while written > 0, nextOut <= Double(written - 1) {
+            emit(into: &out)
+        }
+        for i in history.indices { history[i] = 0 }
+        head = 0
+        written = 0
+        nextOut = 0
     }
 
     public mutating func process(_ input: [Float], into out: inout [Float]) {

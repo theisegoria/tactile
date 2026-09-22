@@ -19,13 +19,27 @@ public final class HapticsPump: @unchecked Sendable {
     public let sink: any HapticsReportSink
     /// When true the pump keeps sending silent reports while idle; when false it
     /// stops sending after `idleReportsBeforeSleep` silent reports.
-    public var sendWhileIdle: Bool
+    public var sendWhileIdle: Bool {
+        get { sendWhileIdleFlag.load(ordering: .relaxed) }
+        set { sendWhileIdleFlag.store(newValue, ordering: .relaxed) }
+    }
 
+    /// Only touched by the pump thread; runs never overlap (see `stop`).
     private var builder: HapticsReportBuilder
     private let recorder = MetricsRecorder()
+    private let sendWhileIdleFlag: Atomic<Bool>
     private let running = Atomic<Bool>(false)
+    /// Identifies the current run. A pump thread keeps going only while this
+    /// still equals the generation it was started with, so a thread that
+    /// outlives its `stop()` can never resume after a later `start()`.
+    private let generation = Atomic<UInt64>(0)
     private let inFlight = Atomic<Int>(0)
-    private var thread: Thread?
+    private struct Control {
+        var thread: Thread?
+        /// Entered when a run starts, left when its thread exits.
+        var exited: DispatchGroup?
+    }
+    private let control = Mutex(Control())
     private let timebase: mach_timebase_info_data_t
     private let periodTicks: UInt64
     private let idleReportsBeforeSleep = 8
@@ -36,7 +50,7 @@ public final class HapticsPump: @unchecked Sendable {
                 sendWhileIdle: Bool = false) {
         self.mixer = mixer
         self.sink = sink
-        self.sendWhileIdle = sendWhileIdle
+        sendWhileIdleFlag = Atomic(sendWhileIdle)
         builder = HapticsReportBuilder(framing: framing)
         var tb = mach_timebase_info_data_t()
         mach_timebase_info(&tb)
@@ -47,26 +61,55 @@ public final class HapticsPump: @unchecked Sendable {
 
     public var isRunning: Bool { running.load(ordering: .acquiring) }
 
+    /// Starts the pump thread. No-op while already running. Safe from any thread.
     public func start() {
-        guard running.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).exchanged else { return }
-        recorder.reset()
-        let t = Thread { [self] in self.run() }
-        t.name = "Tactile.HapticsPump"
-        t.qualityOfService = .userInteractive
-        t.stackSize = 1 << 18
-        thread = t
-        t.start()
+        control.withLock { c in
+            guard !running.load(ordering: .acquiring) else { return }
+            running.store(true, ordering: .releasing)
+            let myGen = generation.add(1, ordering: .acquiringAndReleasing).newValue
+            recorder.reset()
+            cpuStart.withLock { $0 = (0, 0) }
+            let exited = DispatchGroup()
+            exited.enter()
+            let t = Thread { [self] in
+                defer { exited.leave() }
+                self.run(generation: myGen)
+            }
+            t.name = "Tactile.HapticsPump"
+            t.qualityOfService = .userInteractive
+            t.stackSize = 1 << 18
+            c.thread = t
+            c.exited = exited
+            t.start()
+        }
     }
 
+    /// Stops the pump and waits (at most about one period) until its thread has
+    /// finished its last pass, so the mixer and sink are no longer touched once
+    /// this returns. Safe from any thread; when called on the pump thread itself
+    /// (e.g. from `submit`) it does not wait, and the thread exits after the
+    /// current pass.
     public func stop() {
-        running.store(false, ordering: .releasing)
-        thread = nil
+        let (exited, onPumpThread) = control.withLock { c -> (DispatchGroup?, Bool) in
+            if running.load(ordering: .acquiring) {
+                running.store(false, ordering: .releasing)
+                generation.add(1, ordering: .acquiringAndReleasing)
+            }
+            let onPump = c.thread.map { $0 === Thread.current } ?? false
+            c.thread = nil
+            return (c.exited, onPump)
+        }
+        if let exited, !onPumpThread { exited.wait() }
     }
 
     public func metrics() -> HapticsMetrics {
         let (wall0, cpu0) = cpuStart.withLock { $0 }
-        let wall = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - wall0
-        let cpuPct = wall > 0 && wall0 > 0 ? Double(threadCPUNs.load(ordering: .relaxed) - cpu0) / Double(wall) * 100 : 0
+        let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let wall = now > wall0 ? now - wall0 : 0
+        let cpu = threadCPUNs.load(ordering: .relaxed)
+        // Saturate: the pump publishes its CPU time only once per pass.
+        let dc = cpu >= cpu0 ? cpu - cpu0 : 0
+        let cpuPct = wall > 0 && wall0 > 0 ? Double(dc) / Double(wall) * 100 : 0
         let buffered = Double(mixer.stream.availableToRead / 2) / HapticsFormat.sampleRate * 1000
         return recorder.snapshot(cpuPercent: cpuPct, bufferedMs: buffered)
     }
@@ -92,15 +135,23 @@ public final class HapticsPump: @unchecked Sendable {
         }
     }
 
-    private func run() {
+    private func isCurrent(_ gen: UInt64) -> Bool { generation.load(ordering: .acquiring) == gen }
+
+    private func run(generation myGen: UInt64) {
         setRealtimePolicy()
-        cpuStart.withLock { $0 = (clock_gettime_nsec_np(CLOCK_UPTIME_RAW), clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)) }
+        // Publish the CPU baseline before the start time so `metrics()` never
+        // pairs a new start with a stale CPU reading.
+        let cpu0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        threadCPUNs.store(cpu0, ordering: .relaxed)
+        cpuStart.withLock { $0 = (clock_gettime_nsec_np(CLOCK_UPTIME_RAW), cpu0) }
         var samples = [Int8](repeating: 0, count: HapticsFormat.bytesPerReport)
         var deadline = mach_absolute_time() + periodTicks
         var lastWake: UInt64?
         var idleCount = 0
-        while running.load(ordering: .acquiring) {
+        while isCurrent(myGen) {
             mach_wait_until(deadline)
+            // stop() may have been called while we slept: never render or send after it.
+            guard isCurrent(myGen) else { break }
             let now = mach_absolute_time()
             let lateness = now > deadline ? toMicros(now - deadline) : 0
             let interval = lastWake.map { toMicros(now - $0) }

@@ -25,9 +25,13 @@ public final class AudioTapSource: @unchecked Sendable {
         mixer.setStreamGain(gain)
     }
 
-    public func start() {
-        guard !installed else { return }
+    /// Installs the tap. Returns false (and installs nothing) when the node has
+    /// no usable format yet, e.g. `inputNode` without microphone access reports 0 Hz.
+    @discardableResult
+    public func start() -> Bool {
+        guard !installed else { return true }
         let format = node.outputFormat(forBus: bus)
+        guard StreamingResampler.isSupported(rate: format.sampleRate), format.channelCount > 0 else { return false }
         input.reconfigure(inputRate: format.sampleRate)
         let input = self.input
         node.installTap(onBus: bus, bufferSize: 512, format: format) { buffer, _ in
@@ -37,6 +41,7 @@ public final class AudioTapSource: @unchecked Sendable {
             input.feed(channels: chans)
         }
         installed = true
+        return true
     }
 
     public func stop() {
@@ -77,6 +82,10 @@ public enum AudioFileSource {
             let frames = Int(buffer.frameLength)
             let chans = (0..<Int(format.channelCount)).map { UnsafeBufferPointer(start: data[$0], count: frames) }
             input.feed(channels: chans)
+        }
+        if !shouldStop() {
+            input.flush()          // the last ~4.5 ms still inside the filter
+            mixer.finishStream()   // play a clip shorter than the prefill right away
         }
         while mixer.stream.availableToRead > 0, !shouldStop() {
             try await Task.sleep(for: .milliseconds(10))

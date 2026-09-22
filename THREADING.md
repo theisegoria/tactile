@@ -7,10 +7,10 @@
 | `TactileCore` value types (`InputParser`, `OutputReportBuilder`, `TriggerEffect`, …) | Pure values; use freely, but a builder instance holds a sequence counter — one per device, not shared across threads without synchronisation. |
 | `DeviceConnection` | `actor`; every method is safe from any task. |
 | `DeviceDiscovery`, `ControllerManager`, `Controller` | `Sendable`; safe from any thread/task. |
-| `HapticsMixer.play/setRumble/setGain/stopAll` | Any thread (short mutex). |
-| `HapticsMixer.stream` (`SPSCRingBuffer`) | **One producer thread and one consumer (the pump).** Lock-free; producer may be an audio render callback. |
+| `HapticsMixer.play/setRumble/setGain/stopAll` | Any thread (short mutex). `stopAll` stops voices and rumble at once and *requests* a stream flush, which the pump performs at the start of its next block. |
+| `HapticsMixer.stream` (`SPSCRingBuffer`) | **One producer thread and one consumer (the pump).** Lock-free; producer may be an audio render callback. `read`, `clear` and `applyPendingClear` are consumer-only; `requestClear` is callable from any thread. |
 | `PCMInput` | One producer thread per instance. |
-| `HapticsPump` | `start`/`stop`/`metrics` from any thread; the pump runs on its own time-constraint thread. |
+| `HapticsPump` | `start`/`stop`/`metrics`/`sendWhileIdle` from any thread; the pump runs on its own time-constraint thread. `stop` waits (at most about one 10.67 ms period) for the thread's last pass, except when called on the pump thread itself. |
 | `ControllerBridge` | `@MainActor`. |
 
 ## C ABI (`tactile.h`)

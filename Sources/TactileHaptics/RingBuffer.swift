@@ -8,6 +8,13 @@ public final class SPSCRingBuffer: @unchecked Sendable {
     public let capacity: Int
     private let readIndex = Atomic<Int>(0)   // owned by consumer
     private let writeIndex = Atomic<Int>(0)  // owned by producer
+    /// Total samples ever written (producer-owned, monotonic).
+    private let writeCount = Atomic<UInt64>(0)
+    /// Total samples ever consumed (read or cleared). Consumer-only.
+    private var readCount: UInt64 = 0
+    /// `writeCount` snapshot of the latest `requestClear()`; everything written
+    /// before it is dropped by the consumer on its next `applyPendingClear()`.
+    private let clearTarget = Atomic<UInt64>(0)
 
     /// `capacity` samples; one slot is kept empty to distinguish full from empty.
     public init(capacity: Int) {
@@ -38,6 +45,7 @@ public final class SPSCRingBuffer: @unchecked Sendable {
             if w == capacity { w = 0 }
         }
         writeIndex.store(w, ordering: .releasing)
+        writeCount.add(UInt64(n), ordering: .releasing)
         return n
     }
 
@@ -58,11 +66,47 @@ public final class SPSCRingBuffer: @unchecked Sendable {
             if r == capacity { r = 0 }
         }
         readIndex.store(r, ordering: .releasing)
+        readCount &+= UInt64(n)
         return n
     }
 
-    /// Drops everything currently buffered (consumer side).
+    /// Drops everything currently buffered. **Consumer thread only**: `readIndex`
+    /// has a single writer. Other threads use `requestClear()`.
     public func clear() {
-        readIndex.store(writeIndex.load(ordering: .acquiring), ordering: .releasing)
+        skip(availableToRead)
+    }
+
+    /// Asks the consumer to drop everything written so far. Callable from any
+    /// thread; takes effect at the consumer's next `applyPendingClear()`.
+    /// Samples written after this call are kept.
+    public func requestClear() {
+        let target = writeCount.load(ordering: .acquiring)
+        var current = clearTarget.load(ordering: .relaxed)
+        while current < target {
+            let (exchanged, original) = clearTarget.compareExchange(
+                expected: current, desired: target, ordering: .acquiringAndReleasing)
+            if exchanged { break }
+            current = original
+        }
+    }
+
+    /// Performs a pending `requestClear()` (consumer thread only). Returns true
+    /// if a clear was pending.
+    @discardableResult
+    public func applyPendingClear() -> Bool {
+        let target = clearTarget.load(ordering: .acquiring)
+        guard target > readCount else { return false }
+        // Everything up to `target` has been published (writeCount is bumped
+        // after writeIndex), so it is all within availableToRead.
+        skip(Int(min(target - readCount, UInt64(availableToRead))))
+        return true
+    }
+
+    private func skip(_ n: Int) {
+        guard n > 0 else { return }
+        var r = readIndex.load(ordering: .relaxed) + n
+        if r >= capacity { r -= capacity }
+        readIndex.store(r, ordering: .releasing)
+        readCount &+= UInt64(n)
     }
 }

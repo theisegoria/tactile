@@ -16,7 +16,17 @@ public final class HapticsMixer: @unchecked Sendable {
         var gain: Float = 1
         var streamGain: Float = 1
         var seed: UInt32 = 1
+        /// Bumped by `stopAll()` so voices being rendered at that moment are
+        /// discarded instead of re-inserted.
+        var generation: UInt64 = 0
     }
+    public static let maxVoices = 32
+    /// While unprimed and below the prefill, a stream level that stays unchanged
+    /// for this many pump periods (≈43 ms, about twice the default prefill) is
+    /// taken as "the producer has finished" and played anyway. Well above a
+    /// normal producer's callback period, so a live stream still fills the
+    /// jitter buffer.
+    static let stallTicksBeforePlaying = 4
     private let shared = Mutex(Shared())
     private var rumblePhase: (Float, Float) = (0, 0)
     /// Jitter buffer: stream playback starts (and restarts after running dry)
@@ -24,6 +34,8 @@ public final class HapticsMixer: @unchecked Sendable {
     public let streamPrefillFrames: Int
     private var primed = false
     private var lastAvailable = 0
+    private var stallTicks = 0
+    private let streamEnded = Atomic<Bool>(false)
     private var quantizer = Quantizer8()
     private var scratch: UnsafeMutablePointer<Float>
 
@@ -48,7 +60,7 @@ public final class HapticsMixer: @unchecked Sendable {
         shared.withLock { s in
             s.seed &+= 0x9E37_79B9
             s.voices.append(Voice(effect: effect, side: side, sampleRate: sampleRate, seed: s.seed))
-            if s.voices.count > 32 { s.voices.removeFirst(s.voices.count - 32) }
+            if s.voices.count > Self.maxVoices { s.voices.removeFirst(s.voices.count - Self.maxVoices) }
         }
     }
 
@@ -56,9 +68,22 @@ public final class HapticsMixer: @unchecked Sendable {
     /// how rumble requests are honoured while audio haptics own the actuators.
     public func setRumble(_ r: Rumble) { shared.withLock { $0.rumble = r } }
 
+    /// Stops every voice and rumble and drops all stream audio queued so far.
+    /// Callable from any thread. Voices and rumble stop immediately (a voice
+    /// being rendered right now is discarded, not resumed); the stream flush is
+    /// carried out by the consumer (the pump) at the start of its next block,
+    /// because only the consumer may move the ring's read index.
     public func stopAll() {
-        shared.withLock { $0.voices.removeAll(); $0.rumble = .off }
-        stream.clear()
+        shared.withLock { $0.voices.removeAll(); $0.rumble = .off; $0.generation &+= 1 }
+        streamEnded.store(false, ordering: .relaxed)
+        stream.requestClear()
+    }
+
+    /// Tells the mixer the stream producer has finished (e.g. the end of a
+    /// file), so whatever is buffered plays now even if it is shorter than
+    /// the jitter-buffer prefill. Callable from the producer thread.
+    public func finishStream() {
+        streamEnded.store(true, ordering: .releasing)
     }
 
     /// Renders one report's worth (32 stereo frames) of signed 8-bit samples.
@@ -66,13 +91,23 @@ public final class HapticsMixer: @unchecked Sendable {
     /// Missing stream audio is replaced by silence, never by stale data.
     public func render(into out: inout [Int8]) -> Int {
         let n = HapticsFormat.framesPerReport
-        let available = stream.availableToRead / 2
-        if !primed {
-            // Start once the jitter buffer is full, or when the producer has
-            // stopped adding (a short clip smaller than the prefill).
-            if available > 0, available >= streamPrefillFrames || available == lastAvailable { primed = true }
+        if stream.applyPendingClear() {
+            primed = false
+            lastAvailable = 0
+            stallTicks = 0
         }
-        lastAvailable = available
+        let ended = streamEnded.exchange(false, ordering: .acquiring)
+        let available = stream.availableToRead / 2
+        if !primed, available > 0 {
+            // Start once the jitter buffer is full, when the producer said it
+            // has finished, or when the level has not moved for several periods
+            // (a short clip smaller than the prefill, from a producer that never
+            // calls finishStream()).
+            stallTicks = available == lastAvailable ? stallTicks + 1 : 0
+            if available >= streamPrefillFrames || ended || stallTicks >= Self.stallTicksBeforePlaying {
+                primed = true
+            }
+        }
         var got = 0
         var underrunFrames = 0
         if primed {
@@ -82,6 +117,9 @@ public final class HapticsMixer: @unchecked Sendable {
                 primed = false  // ran dry: re-buffer before resuming
             }
         }
+        if primed || got > 0 { stallTicks = 0 }
+        // Level left after this block, so the next stall check compares like with like.
+        lastAvailable = available - got / 2
         for i in got..<(n * 2) { scratch[i] = 0 }
 
         var s = shared.withLock { s -> Shared in
@@ -89,6 +127,7 @@ public final class HapticsMixer: @unchecked Sendable {
             s.voices.removeAll()
             return copy
         }
+        let takenGeneration = s.generation
         let lg = Float(s.rumble.left) / 255, rg = Float(s.rumble.right) / 255
         let dl = 2 * Float.pi * Self.rumbleLeftHz / sampleRate
         let dr = 2 * Float.pi * Self.rumbleRightHz / sampleRate
@@ -118,11 +157,17 @@ public final class HapticsMixer: @unchecked Sendable {
             out[2 * f] = quantizer.quantize(softClip(l * s.gain))
             out[2 * f + 1] = quantizer.quantize(softClip(r * s.gain))
         }
-        // Return unfinished voices (others may have been added meanwhile).
+        // Return unfinished voices (others may have been added meanwhile),
+        // unless stopAll() ran while they were out of the shared state.
         s.voices.removeAll { $0.finished }
         if !s.voices.isEmpty {
             let remaining = s.voices
-            shared.withLock { $0.voices.insert(contentsOf: remaining, at: 0) }
+            shared.withLock { sh in
+                guard sh.generation == takenGeneration else { return }
+                sh.voices.insert(contentsOf: remaining, at: 0)
+                // Voices played meanwhile count towards the cap; drop the oldest.
+                if sh.voices.count > Self.maxVoices { sh.voices.removeFirst(sh.voices.count - Self.maxVoices) }
+            }
         }
         return underrunFrames
     }
@@ -133,6 +178,7 @@ public final class HapticsMixer: @unchecked Sendable {
     }
 
     @inline(__always) private func softClip(_ x: Float) -> Float {
+        if x.isNaN { return 0 }  // a non-finite input sample must never reach Int8()
         if x > 1 { return 1 }
         if x < -1 { return -1 }
         return x

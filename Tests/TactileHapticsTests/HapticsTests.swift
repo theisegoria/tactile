@@ -52,6 +52,9 @@ func rms(_ x: ArraySlice<Float>) -> Float {
         #expect(q.quantize(0) == 0)  // silence stays exactly silent
         #expect(q.quantize(10) == 127)
         #expect(q.quantize(-10) == -127)
+        #expect(q.quantize(.nan) == 0)  // Int8(NaN) would trap
+        #expect(q.quantize(.infinity) == 127)
+        #expect(q.quantize(-.infinity) == -127)
     }
 
     @Test func ditherIsUnbiased() {
@@ -65,6 +68,27 @@ func rms(_ x: ArraySlice<Float>) -> Float {
 }
 
 @Suite struct RingBufferTests {
+    @Test func requestClearDropsOnlyWhatWasWrittenBefore() {
+        let rb = SPSCRingBuffer(capacity: 16)
+        rb.write([1, 2, 3, 4, 5])
+        rb.requestClear()
+        rb.write([6, 7])
+        #expect(rb.availableToRead == 7)  // takes effect on the consumer side
+        #expect(rb.applyPendingClear())
+        #expect(!rb.applyPendingClear())
+        let out = UnsafeMutablePointer<Float>.allocate(capacity: 16)
+        defer { out.deallocate() }
+        #expect(rb.read(into: out, count: 16) == 2)
+        #expect(out[0] == 6 && out[1] == 7)
+        // A request covering already-consumed data is a no-op.
+        rb.write([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])  // wraps
+        _ = rb.read(into: out, count: 4)
+        rb.requestClear()
+        rb.write([20])
+        #expect(rb.applyPendingClear())
+        #expect(rb.read(into: out, count: 16) == 1 && out[0] == 20)
+    }
+
     @Test func wrapAround() {
         let rb = SPSCRingBuffer(capacity: 8)
         var out = [Float](repeating: 0, count: 8)
@@ -104,6 +128,54 @@ func rms(_ x: ArraySlice<Float>) -> Float {
     }
 }
 
+@Suite struct ResamplerRobustnessTests {
+    @Test func invalidRatesAreClampedNotTrapped() {
+        for rate in [Double.infinity, -.infinity, .nan, 0, -48000, 1e-300, 1e30] {
+            var r = StreamingResampler(inputRate: rate)
+            #expect(StreamingResampler.supportedRates.contains(r.inputRate))
+            var out: [Float] = []
+            r.process([Float](repeating: 0.25, count: 64), into: &out)  // must terminate
+            #expect(out.allSatisfy { $0.isFinite })
+        }
+        #expect(!StreamingResampler.isSupported(rate: .infinity))
+        #expect(!StreamingResampler.isSupported(rate: 0))
+        #expect(StreamingResampler.isSupported(rate: 48000))
+    }
+
+    @Test func nonFiniteInputDoesNotPoisonHistory() {
+        var r = StreamingResampler(inputRate: 48000)
+        var input = [Float](repeating: 0.25, count: 4800)
+        input[100] = .nan; input[200] = .infinity; input[300] = -.infinity
+        var out: [Float] = []
+        r.process(input, into: &out)
+        #expect(!out.isEmpty && out.allSatisfy { $0.isFinite })
+    }
+
+    @Test func flushEmitsTheLookAheadTail() {
+        var r = StreamingResampler(inputRate: 48000)
+        var out: [Float] = []
+        r.process([Float](repeating: 0.5, count: 4800), into: &out)  // 100 ms → 300 outputs
+        let beforeFlush = out.count
+        #expect(beforeFlush < 300)
+        r.flush(into: &out)
+        #expect(out.count == 300)
+        #expect(abs(out[beforeFlush] - 0.5) < 0.1)  // real signal, not silence
+        // Reset: the next stream starts from scratch.
+        var again: [Float] = []
+        r.process([Float](repeating: 0.5, count: 4800), into: &again)
+        #expect(again.count == beforeFlush)
+    }
+
+    @Test func pcmInputFlushWritesTail() {
+        let m = HapticsMixer()
+        let input = PCMInput(mixer: m, inputRate: 48000)
+        let fed = input.feed(interleaved: [Float](repeating: 0.5, count: 960 * 2), channelCount: 2)  // 20 ms
+        let tail = input.flush()
+        #expect(fed + tail == 60)
+        #expect(m.stream.availableToRead == 120)
+    }
+}
+
 @Suite struct MixerTests {
     @Test func underrunRendersSilence() {
         let m = HapticsMixer(streamPrefillFrames: 0)
@@ -137,8 +209,88 @@ func rms(_ x: ArraySlice<Float>) -> Float {
         m.stream.write([Float](repeating: 0.5, count: 20))
         _ = m.render(into: &out)  // buffering
         #expect(out.allSatisfy { $0 == 0 })
-        _ = m.render(into: &out)  // producer stopped → play the remainder
+        // Level unchanged for stallTicksBeforePlaying periods → producer stopped.
+        for _ in 1..<HapticsMixer.stallTicksBeforePlaying {
+            _ = m.render(into: &out)
+            #expect(out.allSatisfy { $0 == 0 })
+        }
+        _ = m.render(into: &out)  // play the remainder
         #expect(out[0] != 0)
+    }
+
+    @Test func finishStreamPlaysShortClipImmediately() {
+        let m = HapticsMixer(streamPrefillFrames: 64)
+        var out: [Int8] = []
+        m.stream.write([Float](repeating: 0.5, count: 20))
+        m.finishStream()
+        _ = m.render(into: &out)
+        #expect(out[0] != 0)
+    }
+
+    @Test func singleProducerGapDoesNotBypassPrefill() {
+        // A live producer delivering ~35 frames per callback, with one pump
+        // tick that sees no new data, must still fill the 64-frame prefill.
+        let m = HapticsMixer(streamPrefillFrames: 64)
+        var out: [Int8] = []
+        m.stream.write([Float](repeating: 0.5, count: 70))  // 35 frames
+        _ = m.render(into: &out)
+        _ = m.render(into: &out)  // gap tick: level unchanged
+        #expect(out.allSatisfy { $0 == 0 })
+        #expect(m.stream.availableToRead == 70)
+        m.stream.write([Float](repeating: 0.5, count: 70))  // 70 frames ≥ prefill
+        _ = m.render(into: &out)
+        #expect(out.allSatisfy { $0 != 0 })
+    }
+
+    @Test func nonFiniteSamplesRenderAsSilenceInsteadOfTrapping() {
+        let m = HapticsMixer(streamPrefillFrames: 0)
+        var samples = [Float](repeating: 0, count: 64)
+        samples[0] = .nan; samples[1] = .nan
+        samples[2] = .infinity; samples[3] = -.infinity
+        m.stream.write(samples)
+        var out: [Int8] = []
+        _ = m.render(into: &out)
+        #expect(out[0] == 0 && out[1] == 0)
+        #expect(out[2] == 127 && out[3] == -127)
+        m.play(.tone(intensity: .nan, frequency: 100, duration: 0.1))
+        _ = m.render(into: &out)
+        #expect(out.allSatisfy { $0 == 0 })
+    }
+
+    @Test func stopAllFlushesQueuedStreamOnNextBlockOnly() {
+        let m = HapticsMixer(streamPrefillFrames: 0)
+        m.stream.write([Float](repeating: 0.5, count: 200))
+        m.play(.tone(intensity: 1, frequency: 100, duration: 10))
+        m.setRumble(Rumble(left: 255, right: 255))
+        m.stopAll()
+        // Audio written after the stop request is kept.
+        m.stream.write([Float](repeating: -0.5, count: 64))
+        var out: [Int8] = []
+        _ = m.render(into: &out)
+        #expect(out.allSatisfy { $0 < 0 })
+        #expect(m.stream.availableToRead == 0)
+        #expect(m.isIdle)
+    }
+
+    @Test func stopAllDuringRenderDoesNotResurrectVoices() async {
+        // Hammer render (the pump side) and stopAll concurrently; after the
+        // last stopAll with no render in flight, nothing may still be playing.
+        let m = HapticsMixer()
+        let done = Atomic<Bool>(false)
+        let renderer = Task.detached {
+            var out: [Int8] = []
+            while !done.load(ordering: .acquiring) { _ = m.render(into: &out) }
+        }
+        for _ in 0..<2000 {
+            m.play(.tone(intensity: 1, frequency: 100, duration: 10))
+            m.stopAll()
+        }
+        done.store(true, ordering: .releasing)
+        await renderer.value
+        var out: [Int8] = []
+        _ = m.render(into: &out)
+        #expect(out.allSatisfy { $0 == 0 })
+        #expect(m.isIdle)
     }
 
     @Test func parametricEffectsPlayAndFinish() {
@@ -171,6 +323,34 @@ func rms(_ x: ArraySlice<Float>) -> Float {
         #expect(HapticEffect.impact().duration > HapticEffect.click().duration)
         #expect(HapticEffect.texture(duration: 2).duration == 2)
     }
+
+    @Test func nonFiniteAndHugeDurationsDoNotTrap() {
+        for d in [Double.infinity, -.infinity, .nan, 1e30, -5] {
+            let v = Voice(effect: .tone(intensity: 1, frequency: 100, duration: d), side: .both, sampleRate: 3000, seed: 1)
+            #expect(v.length >= 1 && v.length <= Int(HapticEffect.maximumDuration * 3000))
+        }
+        var v = Voice(effect: .texture(intensity: 1, grainRate: .nan, duration: 0.1), side: .both, sampleRate: 3000, seed: 1)
+        for _ in 0..<300 { #expect(v.next().isFinite) }
+    }
+
+    @Test func textureGrainsAllStartAtFullLevel() {
+        // Every grain has the same envelope regardless of its jittered spacing.
+        var v = Voice(effect: .texture(intensity: 1, grainRate: 60, duration: 2), side: .both, sampleRate: 3000, seed: 7)
+        var peaks: [Float] = []
+        var current: Float = 0
+        var lastStart = 0
+        for _ in 0..<6000 {
+            let x = abs(v.next())
+            if v.grainStart != lastStart {
+                peaks.append(current); current = 0; lastStart = v.grainStart
+            }
+            current = max(current, x)
+        }
+        let body = peaks.dropFirst().dropLast()
+        #expect(body.count > 50)
+        let lo = body.min() ?? 0, hi = body.max() ?? 0
+        #expect(lo > 0.9 * hi)
+    }
 }
 
 final class CountingSink: HapticsReportSink, @unchecked Sendable {
@@ -197,6 +377,36 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         let m = pump.metrics()
         #expect(abs(m.tickIntervalMeanUs - 10_666.7) < 1_500)
         #expect(m.reportsSent == reports.count)
+    }
+
+    @Test func stopJoinsThreadAndRestartDoesNotDoublePump() async throws {
+        let sink = CountingSink()
+        let pump = HapticsPump(mixer: HapticsMixer(), sink: sink, sendWhileIdle: true)
+        pump.start()
+        try await Task.sleep(for: .milliseconds(30))
+        for _ in 0..<20 { pump.stop(); pump.start() }  // back to back, within one period
+        let before = sink.reports.withLock { $0.count }
+        try await Task.sleep(for: .milliseconds(320))
+        pump.stop()
+        let after = sink.reports.withLock { $0.count }
+        // One pump: ≈30 reports in 320 ms. Two surviving threads would give ≈60.
+        #expect(after - before <= 36)
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(sink.reports.withLock { $0.count } == after)  // nothing after stop() returned
+        #expect(!pump.isRunning)
+    }
+
+    @Test func metricsRightAfterStartDoNotTrap() async throws {
+        let pump = HapticsPump(mixer: HapticsMixer(), sink: CountingSink(), sendWhileIdle: true)
+        for _ in 0..<3 {
+            pump.start()
+            let end = ContinuousClock.now + .milliseconds(25)
+            while ContinuousClock.now < end {
+                let m = pump.metrics()
+                #expect(m.pumpCPUPercent >= 0 && m.pumpCPUPercent.isFinite)
+            }
+            pump.stop()
+        }
     }
 
     @Test func idlePumpStopsSending() async throws {

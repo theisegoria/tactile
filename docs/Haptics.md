@@ -20,8 +20,10 @@ parametric voices ──► HapticsMixer.render(32 frames) ◄── rumble emul
 - **Underruns send silence, never stale data.** Missing stream frames are zero-filled.
 - **Jitter buffer:** streamed audio starts once 64 frames (≈ 21 ms) are queued and
   re-buffers after running dry (`HapticsMixer(streamPrefillFrames:)`). A clip shorter
-  than the prefill plays as soon as the producer stops adding to it. Parametric
-  effects bypass the buffer.
+  than the prefill plays as soon as the producer calls `HapticsMixer.finishStream()`
+  (the file player does), or after the level has stayed unchanged for 4 ticks
+  (≈ 43 ms). At the end of a clip `PCMInput.flush()` emits the resampler's
+  look-ahead tail. Parametric effects bypass the buffer.
 - **Idle:** after 8 silent reports the pump stops sending (saves radio time) and
   resumes as soon as anything plays.
 - **Back-pressure:** at most 3 reports in flight; beyond that ticks are dropped and

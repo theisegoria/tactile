@@ -17,11 +17,16 @@ public enum HapticEffect: Sendable, Hashable, Codable {
     /// A softer notch, like a rotary detent.
     case detent(intensity: Float = 0.7, frequency: Float = 170)
     /// A continuous grainy surface, `grainRate` grains per second.
+    /// `duration` is clamped to 0…`HapticEffect.maximumDuration` (NaN plays nothing).
     case texture(intensity: Float = 0.5, grainRate: Float = 60, duration: Double = 0.5)
     /// A heavy thump with a noisy transient (landing, collision).
     case impact(intensity: Float = 1)
-    /// A pure tone for `duration` seconds.
+    /// A pure tone for `duration` seconds, clamped to 0…`HapticEffect.maximumDuration`
+    /// (so `.infinity` holds until `stopAll()`, up to that cap; NaN plays nothing).
     case tone(intensity: Float, frequency: Float, duration: Double)
+
+    /// Longest effect a voice will play, in seconds (one hour).
+    public static let maximumDuration: Double = 3600
 
     public var duration: Double {
         switch self {
@@ -43,12 +48,17 @@ struct Voice: Sendable {
     var position = 0
     var rng: XorShift32
     var nextGrain = 0
+    var grainStart = 0
 
     init(effect: HapticEffect, side: HapticSide, sampleRate: Float, seed: UInt32) {
         self.effect = effect
         self.side = side
         self.sampleRate = sampleRate
-        length = max(1, Int(Float(effect.duration) * sampleRate))
+        // Clamp before converting: Int() traps on NaN, infinity and huge values.
+        let d = effect.duration
+        let seconds = d.isNaN ? 0 : min(max(d, 0), HapticEffect.maximumDuration)
+        let rate = sampleRate.isFinite ? max(Double(sampleRate), 0) : 0
+        length = max(1, Int(seconds * rate))
         rng = XorShift32(seed: seed)
     }
 
@@ -68,12 +78,15 @@ struct Voice: Sendable {
             return a * env * sin(2 * .pi * f * t)
         case .texture(let a, let rate, _):
             // Short decaying 200 Hz grains at jittered intervals.
+            // Each grain starts at its own onset (zero phase, full level), so
+            // every grain has the same shape whatever its jittered spacing.
             if position >= nextGrain {
-                let interval = sampleRate / max(rate, 1)
+                let interval = sampleRate / (rate.isNaN ? 1 : max(rate, 1))  // Int() below traps on NaN
+                grainStart = position
                 nextGrain = position + max(1, Int(interval * (0.6 + 0.8 * (rng.unit() + 0.5))))
             }
-            let sinceGrain = Float(position - (nextGrain - Int(sampleRate / max(rate, 1)))) / sampleRate
-            return a * 0.8 * sin(2 * .pi * 200 * t) * exp(-max(sinceGrain, 0) / 0.006)
+            let sinceGrain = Float(position - grainStart) / sampleRate
+            return a * 0.8 * sin(2 * .pi * 200 * sinceGrain) * exp(-sinceGrain / 0.006)
         case .impact(let a):
             let body = sin(2 * .pi * 70 * t) * exp(-t / 0.045)
             let transient = rng.unit() * 2 * exp(-t / 0.006)
