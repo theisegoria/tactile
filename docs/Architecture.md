@@ -25,7 +25,11 @@
   send any Bluetooth report whose CRC does not verify.
 - Neutral state (triggers off, rumble off, lightbar restored) is written on close,
   on Ctrl-C in `tactilectl`, and on the next open after a crash (journal in
-  `~/Library/Caches/Tactile/dirty/`).
+  `~/Library/Caches/Tactile/dirty/`). A normal app quit writes it only if the host
+  calls `ControllerManager.shutdown()` or `Controller.close()` (the sample app does
+  this from `applicationShouldTerminate`).
+- `ControllerManager.shutdown()` waits for discovery to stop and forgets its
+  controllers; a later `events()` announces new `Controller` objects.
 
 ## Pairing HID devices with GCControllers
 
@@ -34,6 +38,8 @@ HID serial number). GameController exposes no public identifier, so
 `ControllerBridge` matches a `GCController` to a HID device when there is exactly
 one of each, or by correlating button edges seen through both APIs within 35 ms
 (three coincidences and a clear winner required). Connection order is never used.
+The bridge polls GameController button state when `hidInput(_:buttons:)` is
+called, so hosts must feed it HID input for correlation to work.
 
 ## Virtual device seam
 
