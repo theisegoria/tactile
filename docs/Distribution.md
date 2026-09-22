@@ -3,7 +3,7 @@
 ## Swift Package Manager
 
 ```swift
-.package(url: "https://github.com/<you>/tactile.git", from: "0.1.0")
+.package(url: "https://github.com/theisegoria/tactile.git", from: "0.1.0")
 // products: Tactile (everything), TactileCore, TactileTransport, TactileHaptics, TactileBridge
 ```
 
