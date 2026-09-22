@@ -57,8 +57,8 @@ import Testing
         #expect(out.gyroDegPerSec.x == 1 && out.accelG.x == 1)
     }
 
-    // Source: tools/gen_vectors.py, example controller MAC (locally administered)
-    // record (02:11:22:33:44:55) stored LSB-first, sealed with feature CRC seed 0xA3.
+    // Source: tools/gen_vectors.py, example locally administered MAC
+    // (02:11:22:33:44:55) stored LSB-first, sealed with feature CRC seed 0xA3.
     @Test func pairingOverBluetooth() throws {
         let raw = hex("09 55 44 33 22 11 02 00 00 00 00 00 00 00 00 00 00 00 00 00 0e c1 38 50")
         let unwrapped = try FeatureReportFraming.unwrap(raw, transport: .bluetooth)

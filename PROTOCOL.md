@@ -8,8 +8,7 @@ Every fact the code depends on, with its source and verification status.
 - 🔬 **single source / reverse engineered**: treat with extra suspicion.
 
 As of 2026-09-22 **no fact has been verified on device yet**. The development
-machine had a paired DualSense (MAC `02:11:22:33:44:55` in the macOS Bluetooth
-pairing record) but it was not connected, and the build process did not have
+machine had a paired DualSense (address omitted from the public repository) but it was not connected, and the build process did not have
 Input Monitoring. See `docs/receipts/gate-0.md`.
 
 **Sources** (see `THIRD_PARTY_NOTICES.md` for licences and how each was used)

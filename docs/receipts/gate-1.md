@@ -22,7 +22,7 @@ $ swift test
 | BT 0x31 input (full) and Edge variant; USB 0x01 input | synthesised from the documented layout (LNX/SDL facts) by `tools/gen_vectors.py`, CRC via zlib |
 | BT 0x01 reduced input | SDL simple-state layout, hand-built |
 | 0x05 calibration and its maths | documented layout (LNX facts); expected deg/s and g computed by hand |
-| 0x09 pairing over BT with 0xA3 CRC | MAC from this Mac's pairing record; layout from LNX; `tools/gen_vectors.py` |
+| 0x09 pairing over BT with 0xA3 CRC | example locally administered MAC 02:11:22:33:44:55; layout from LNX; `tools/gen_vectors.py` |
 | 0x20 firmware | documented offsets (LNX); `tools/gen_vectors.py` |
 | 0x31 / 0x02 output (v2 and legacy rumble, sequence wrap) | documented common block (LNX/SDL); `tools/gen_vectors.py` |
 | Trigger effects | formulas from NLK gist; multi-zone values from `tools/gen_vectors.py` (Python `round` is half-to-even, matching C# `Math.Round`) |

@@ -24,7 +24,7 @@ $ swift run tactile-probe list
 [03:06:04.627] Found 0 device(s)
 ```
 
-- The Mac has a DualSense **paired** (`system_profiler`: address 02:11:22:33:44:55,
+- The Mac has a DualSense **paired** (`system_profiler`: address redacted,
   VID 0x054C, PID 0x0CE6) but it was **not connected** during this session (no
   IOHIDDevice with PID 0x0CE6 in the IORegistry).
 - The process running the build has Input Monitoring **denied**.
