@@ -1,0 +1,11 @@
+{
+  "name": "com.tactile.dualsense",
+  "version": "0.1.0",
+  "displayName": "Tactile (DualSense over Bluetooth, macOS)",
+  "description": "Adaptive triggers, lightbar, player/mute LEDs, IMU, Edge paddles and Bluetooth audio haptics for DualSense on macOS, via the Tactile C ABI. Not affiliated with Sony Interactive Entertainment.",
+  "unity": "2022.3",
+  "license": "MIT",
+  "samples": [
+    { "displayName": "Demo", "description": "Polls input, plays haptic clicks, toggles a weapon trigger.", "path": "Samples~/Demo" }
+  ]
+}

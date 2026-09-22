@@ -1,0 +1,7 @@
+{
+  "name": "Tactile.Runtime",
+  "rootNamespace": "Tactile",
+  "includePlatforms": ["Editor", "macOSStandalone"],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}
