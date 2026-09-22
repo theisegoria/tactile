@@ -1,0 +1,10 @@
+.DS_Store
+/.build
+/.swiftpm
+/Packages
+xcuserdata/
+DerivedData/
+*.xcframework
+/build
+/dist
+captures/*.bin
