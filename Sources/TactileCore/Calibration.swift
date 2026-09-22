@@ -34,6 +34,13 @@ public struct IMUCalibration: Sendable, Hashable, Codable {
     public var accel: [AxisCalibration]  // x, y, z
     /// False when the report contained degenerate values and defaults were used.
     public var isFromDevice: Bool
+    /// The factory gyro bias (pitch, yaw, roll) read from report 0x05, in raw counts.
+    ///
+    /// Not applied by `gyro`: the firmware already bias-corrects the reported
+    /// samples, so the bias only feeds the sensitivity denominator (matching
+    /// Linux hid-playstation). Apps that observe a constant offset at rest can
+    /// subtract it themselves, though an at-rest drift recalibration is better.
+    public var factoryGyroBias: [Int32]
 
     /// Nominal calibration used when report 0x05 is unavailable or degenerate.
     public static let defaults = IMUCalibration(
@@ -41,10 +48,22 @@ public struct IMUCalibration: Sendable, Hashable, Codable {
         accel: Array(repeating: AxisCalibration(bias: 0, numerator: 1, denominator: accelResolutionPerG), count: 3),
         isFromDevice: false)
 
-    public init(gyro: [AxisCalibration], accel: [AxisCalibration], isFromDevice: Bool) {
+    public init(gyro: [AxisCalibration], accel: [AxisCalibration], isFromDevice: Bool, factoryGyroBias: [Int32] = [0, 0, 0]) {
         self.gyro = gyro
         self.accel = accel
         self.isFromDevice = isFromDevice
+        self.factoryGyroBias = factoryGyroBias
+    }
+
+    private enum CodingKeys: String, CodingKey { case gyro, accel, isFromDevice, factoryGyroBias }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            gyro: try c.decode([AxisCalibration].self, forKey: .gyro),
+            accel: try c.decode([AxisCalibration].self, forKey: .accel),
+            isFromDevice: try c.decode(Bool.self, forKey: .isFromDevice),
+            factoryGyroBias: try c.decodeIfPresent([Int32].self, forKey: .factoryGyroBias) ?? [0, 0, 0])
     }
 
     /// Parses feature report 0x05. `bytes[0]` must be 0x05.
@@ -71,8 +90,11 @@ public struct IMUCalibration: Sendable, Hashable, Codable {
             let denom = abs(plus[i] - bias[i]) + abs(minus[i] - bias[i])
             if denom == 0 || speed2x == 0 { degenerate = true }
             // speed2x * RES / denom maps raw->counts; dividing by RES gives deg/s,
-            // so the net factor is speed2x / denom.
-            gyro.append(AxisCalibration(bias: bias[i], numerator: speed2x, denominator: denom))
+            // so the net factor is speed2x / denom. The bias is used only in the
+            // denominator: the firmware already applies it to the samples
+            // (Linux hid-playstation sets the gyro bias to 0; SDL subtracts it —
+            // unverified on hardware, see PROTOCOL.md).
+            gyro.append(AxisCalibration(bias: 0, numerator: speed2x, denominator: denom))
         }
 
         var accel: [AxisCalibration] = []
@@ -86,7 +108,7 @@ public struct IMUCalibration: Sendable, Hashable, Codable {
         if degenerate {
             self = .defaults
         } else {
-            self.init(gyro: gyro, accel: accel, isFromDevice: true)
+            self.init(gyro: gyro, accel: accel, isFromDevice: true, factoryGyroBias: bias)
         }
     }
 

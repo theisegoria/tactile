@@ -90,5 +90,11 @@ let usbIn = hex("01 0a 14 1e 28 32 3c 07 22 21 05 00 00 00 00 00 01 00 fe ff 03 
         #expect(BatteryStatus(statusByte: 0x2F).charging == .full)
         #expect(BatteryStatus(statusByte: 0x2F).percent == 100)
         #expect(BatteryStatus(statusByte: 0xF0).charging == .error)
+        // Error / unknown states carry no charge level (LNX reports 0).
+        #expect(BatteryStatus(statusByte: 0xB9) == BatteryStatus(percent: 0, charging: .error))
+        #expect(BatteryStatus(statusByte: 0xA7) == BatteryStatus(percent: 0, charging: .error))
+        #expect(BatteryStatus(statusByte: 0xF5).percent == 0)
+        #expect(BatteryStatus(statusByte: 0x57) == BatteryStatus(percent: 0, charging: .unknown))
+        #expect(BatteryStatus(statusByte: 0x17) == BatteryStatus(percent: 75, charging: .charging))
     }
 }

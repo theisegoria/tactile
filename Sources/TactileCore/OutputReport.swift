@@ -129,6 +129,14 @@ public struct OutputReportBuilder: Sendable {
         self.features = features
     }
 
+    /// Copies exactly `TriggerEffect.byteCount` bytes so the common block can
+    /// never change size, whatever `t.bytes` holds.
+    private static func copyTrigger(_ t: TriggerEffect, into c: inout [UInt8], at offset: Int) {
+        for i in 0..<TriggerEffect.byteCount {
+            c[offset + i] = i < t.bytes.count ? t.bytes[i] : 0
+        }
+    }
+
     /// Encodes the 47-byte common block.
     public func encodeCommon(_ s: OutputState) -> [UInt8] {
         typealias L = OutputLayout
@@ -145,11 +153,11 @@ public struct OutputReportBuilder: Sendable {
         }
         if let t = s.rightTrigger {
             c[L.validFlag0] |= L.flag0RightTrigger
-            c.replaceSubrange(L.rightTrigger..<(L.rightTrigger + TriggerEffect.byteCount), with: t.bytes)
+            Self.copyTrigger(t, into: &c, at: L.rightTrigger)
         }
         if let t = s.leftTrigger {
             c[L.validFlag0] |= L.flag0LeftTrigger
-            c.replaceSubrange(L.leftTrigger..<(L.leftTrigger + TriggerEffect.byteCount), with: t.bytes)
+            Self.copyTrigger(t, into: &c, at: L.leftTrigger)
         }
         if let m = s.muteLED {
             c[L.validFlag1] |= L.flag1MuteLED

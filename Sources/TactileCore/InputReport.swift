@@ -113,6 +113,7 @@ public struct BatteryStatus: Sendable, Hashable, Codable {
     }
 
     /// 0...100, in steps of 10 (the device reports tenths; values above 10 clamp).
+    /// 0 when `charging` is `.error` or `.unknown`.
     public var percent: Int
     public var charging: Charging
 
@@ -130,8 +131,13 @@ public struct BatteryStatus: Sendable, Hashable, Codable {
         case 0xA, 0xB, 0xF: charging = .error
         default: charging = .unknown
         }
-        // Sony reports 0-10 (tenths). When full, the level nibble is not meaningful.
-        percent = charging == .full ? 100 : min(level * 10 + 5, 100)
+        // Sony reports 0-10 (tenths). When full, the level nibble is not meaningful;
+        // in error/unknown states it is not a charge level, so report 0 (as LNX does).
+        switch charging {
+        case .full: percent = 100
+        case .discharging, .charging: percent = min(level * 10 + 5, 100)
+        case .error, .unknown: percent = 0
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import TactileCore
 
@@ -10,20 +11,40 @@ import Testing
     @Test func calibrationParse() throws {
         let c = try IMUCalibration(featureReport: cal)
         #expect(c.isFromDevice)
-        #expect(c.gyro[0] == AxisCalibration(bias: 10, numerator: 1080, denominator: 2000))
+        // Gyro bias feeds only the denominator (|1010-10| + |-990-10| = 2000);
+        // the samples are already bias-corrected by the firmware (LNX).
+        #expect(c.gyro[0] == AxisCalibration(bias: 0, numerator: 1080, denominator: 2000))
+        #expect(c.gyro[1] == AxisCalibration(bias: 0, numerator: 1080, denominator: 2000))
+        #expect(c.factoryGyroBias == [10, -5, 0])
         #expect(c.accel[0] == AxisCalibration(bias: 100, numerator: 2, denominator: 16384))
         #expect(c.accel[2] == AxisCalibration(bias: 8, numerator: 2, denominator: 16384))
     }
 
     @Test func calibrationApply() throws {
         let c = try IMUCalibration(featureReport: cal)
-        let out = c.apply(RawIMU(gyro: SIMD3(1010, -5, -1000), accel: SIMD3(8292, 0, -8184), timestamp: 9))
+        let out = c.apply(RawIMU(gyro: SIMD3(1000, 0, -1000), accel: SIMD3(8292, 0, -8184), timestamp: 9))
         #expect(abs(out.gyroDegPerSec.x - 540) < 0.001)
         #expect(abs(out.gyroDegPerSec.y) < 0.001)
         #expect(abs(out.gyroDegPerSec.z + 540) < 0.001)
         #expect(abs(out.accelG.x - 1) < 0.0001)
         #expect(abs(out.accelG.z + 1) < 0.0001)
         #expect(out.timestamp == 9)
+    }
+
+    @Test func gyroAtRestHasNoBiasOffset() throws {
+        // Regression: a controller at rest reports raw 0 (firmware-corrected);
+        // subtracting the factory bias again used to produce a steady drift.
+        let c = try IMUCalibration(featureReport: cal)
+        let out = c.apply(RawIMU(gyro: SIMD3(0, 0, 0), accel: SIMD3(0, 0, 0), timestamp: 0))
+        #expect(out.gyroDegPerSec == SIMD3(0, 0, 0))
+    }
+
+    @Test func calibrationDecodesWithoutFactoryBias() throws {
+        let json = #"{"gyro":[{"bias":0,"numerator":1,"denominator":1024},{"bias":0,"numerator":1,"denominator":1024},{"bias":0,"numerator":1,"denominator":1024}],"accel":[{"bias":0,"numerator":1,"denominator":8192},{"bias":0,"numerator":1,"denominator":8192},{"bias":0,"numerator":1,"denominator":8192}],"isFromDevice":false}"#
+        let c = try JSONDecoder().decode(IMUCalibration.self, from: Data(json.utf8))
+        #expect(c == .defaults)
+        let round = try JSONDecoder().decode(IMUCalibration.self, from: JSONEncoder().encode(try IMUCalibration(featureReport: cal)))
+        #expect(round.factoryGyroBias == [10, -5, 0])
     }
 
     @Test func degenerateCalibrationFallsBack() throws {

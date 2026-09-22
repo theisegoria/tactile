@@ -51,6 +51,15 @@ import Testing
         #expect(d)
     }
 
+    @Test func invalidRatesFallBackToDefault() {
+        // Regression: NaN used to trap in UInt64(_:).
+        let expected = UInt64(1_000_000_000 / RateLimiter.defaultRate)
+        for rate in [Double.nan, -.nan, .infinity, -.infinity, 0, -5] {
+            #expect(RateLimiter(maxPerSecond: rate).minimumInterval == expected)
+        }
+        #expect(RateLimiter(maxPerSecond: 1e300).minimumInterval == 1)
+    }
+
     @Test func sustainedRateIsCapped() {
         var r = RateLimiter(maxPerSecond: 250, burst: 1)
         var sent = 0

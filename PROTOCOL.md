@@ -54,7 +54,7 @@ Input Monitoring. See `docs/receipts/gate-0.md`.
 | Buttons byte 0: hat low nibble (0=N … 7=NW, 8=released), □ ✕ ○ △ bits 4–7; byte 1: L1 R1 L2 R2 Create Options L3 R3; byte 2: PS, touchpad, mute | LNX, SDL | ⚠️ |
 | Edge: Fn1, Fn2, left paddle, right paddle = bits 4–7 of buttons byte 2 (Linux driver, May 2026) | LNX | 🔬 order unverified |
 | Touch point: byte 0 bit 7 = *not* touching, bits 0–6 id; 12-bit X, 12-bit Y packed in 3 bytes; 1920×1080 | LNX, SDL | ⚠️ |
-| Status byte: low nibble battery 0–10, high nibble 0 discharging / 1 charging / 2 full / A,B,F error; percent = min(level×10+5, 100) | LNX | ⚠️ |
+| Status byte: low nibble battery 0–10, high nibble 0 discharging / 1 charging / 2 full / A,B,F error; percent = min(level×10+5, 100) when discharging/charging, 100 when full, 0 for error (A, B, F) and unknown states | LNX | ⚠️ |
 | Status byte 53: bit 0 headphones, bit 1 microphone | LNX | 🔬 |
 
 ## Feature reports
@@ -63,7 +63,7 @@ Input Monitoring. See `docs/receipts/gate-0.md`.
 |---|---|---|---|---|
 | `0x03` | — | capabilities (dumped raw by the probe, not parsed) | prompt | 🔬 |
 | `0x05` | 41 | calibration: int16 gyro bias p/y/r; gyro plus/minus pairs p, y, r; gyro speed plus/minus; accel plus/minus pairs x, y, z | LNX, SDL | ⚠️ |
-| `0x05` | | gyro deg/s = (raw − bias) × (speed⁺ + speed⁻) / (\|plus − bias\| + \|minus − bias\|); accel g = (raw − (plus − range/2)) × 2 / range, range = plus − minus | LNX | ⚠️ |
+| `0x05` | | gyro deg/s = raw × (speed⁺ + speed⁻) / (\|plus − bias\| + \|minus − bias\|) — the bias feeds only the denominator because the firmware already bias-corrects the samples (LNX sets the gyro bias to 0; SDL subtracts it — the references disagree, unverified on hardware; the parsed bias is exposed as `IMUCalibration.factoryGyroBias`, and apps should prefer an at-rest drift recalibration); accel g = (raw − (plus − range/2)) × 2 / range, range = plus − minus | LNX | ⚠️ |
 | `0x09` | 20 | bytes 1–6 = controller MAC, least-significant first | LNX, SDL | ⚠️ |
 | `0x20` | 64 | ASCII build date 1–11, time 12–19; hardware version u32 @24; firmware version u32 @28; **update version u16 @44** | LNX | ⚠️ |
 

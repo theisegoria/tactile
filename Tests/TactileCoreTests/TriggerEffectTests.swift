@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import TactileCore
 
@@ -39,6 +40,10 @@ import Testing
     @Test func multiplePositionVibration() throws {
         let e = try TriggerEffect.multiplePositionVibration(frequency: 10, amplitudes: [1, 0, 0, 0, 0, 0, 0, 0, 0, 8])
         #expect(e.bytes == hex("26 01 02 00 00 00 38 00 00 0a 00"))
+        // No active zone falls through to Off, as in the reference.
+        let silent = try TriggerEffect.multiplePositionVibration(frequency: 40, amplitudes: [Int](repeating: 0, count: 10))
+        #expect(silent == .off)
+        #expect(silent.mode == .off)
     }
 
     @Test func bow() throws {
@@ -68,5 +73,25 @@ import Testing
 
     @Test func rawBytesPadded() {
         #expect(TriggerEffect(rawBytes: [0xFC, 1]).bytes.count == 11)
+    }
+
+    @Test func decodingNormalisesLength() throws {
+        let short = try JSONDecoder().decode(TriggerEffect.self, from: Data(#"{"bytes":[33]}"#.utf8))
+        #expect(short.bytes == hex("21 00 00 00 00 00 00 00 00 00 00"))
+        let long = try JSONDecoder().decode(TriggerEffect.self, from: Data(("{\"bytes\":[" + Array(repeating: "7", count: 60).joined(separator: ",") + "]}").utf8))
+        #expect(long.bytes.count == TriggerEffect.byteCount)
+        let w = try TriggerEffect.weapon(start: 2, end: 6, strength: 8)
+        #expect(try JSONDecoder().decode(TriggerEffect.self, from: JSONEncoder().encode(w)) == w)
+    }
+
+    @Test func decodedOutputStateKeepsLayout() throws {
+        // Regression: a decoded state with a wrong-length trigger used to shift or trap the report.
+        let json = #"{"releaseLightbarAnimation":false,"rightTrigger":{"bytes":[37,68,0,7]},"leftTrigger":{"bytes":[5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}"#
+        let s = try JSONDecoder().decode(OutputState.self, from: Data(json.utf8))
+        let b = OutputReportBuilder(features: FeatureSet(vibrationV2: true, hasEdgeButtons: false))
+        let c = b.encodeCommon(s)
+        #expect(c.count == OutputLayout.commonLength)
+        #expect(Array(c[OutputLayout.rightTrigger..<(OutputLayout.rightTrigger + 4)]) == [0x25, 0x44, 0x00, 0x07])
+        #expect(c[OutputLayout.leftTrigger] == TriggerEffect.Mode.off.rawValue)
     }
 }

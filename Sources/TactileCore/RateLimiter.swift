@@ -5,14 +5,19 @@
 public struct RateLimiter: Sendable {
     public let minimumInterval: UInt64  // nanoseconds
     public let burst: Int
+    /// Rate used when `maxPerSecond` is not a finite positive number.
+    public static let defaultRate: Double = 125
     private var tokens: Double
     private var last: UInt64?
 
     /// - Parameters:
-    ///   - maxPerSecond: sustained rate.
+    ///   - maxPerSecond: sustained rate; NaN, infinite or ≤ 0 means `defaultRate`.
     ///   - burst: number of reports allowed back-to-back.
     public init(maxPerSecond: Double, burst: Int = 2) {
-        minimumInterval = UInt64(1_000_000_000 / max(maxPerSecond, 0.001))
+        // NaN, infinite or non-positive rates fall back to the default 125 Hz, so a
+        // caller bug can never trap here (UInt64(.nan) traps) or disable the cap.
+        let rate = (maxPerSecond.isFinite && maxPerSecond > 0) ? max(maxPerSecond, 0.001) : Self.defaultRate
+        minimumInterval = max(1, UInt64(1_000_000_000 / rate))
         self.burst = max(burst, 1)
         tokens = Double(self.burst)
     }

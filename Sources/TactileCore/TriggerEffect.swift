@@ -43,6 +43,15 @@ public struct TriggerEffect: Sendable, Hashable, Codable {
         bytes = b
     }
 
+    private enum CodingKeys: String, CodingKey { case bytes }
+
+    /// Decodes through `init(rawBytes:)` so a decoded effect always has exactly
+    /// 11 bytes (the output report encoder relies on that invariant).
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(rawBytes: try c.decode([UInt8].self, forKey: .bytes))
+    }
+
     public enum ValidationError: Error, Sendable, Equatable {
         case outOfRange(parameter: String, value: Int, allowed: ClosedRange<Int>)
         case ordering(String)
@@ -155,6 +164,7 @@ public struct TriggerEffect: Sendable, Hashable, Codable {
                 activeZones |= 1 << i
             }
         }
+        guard activeZones != 0 else { return .off }
         var b = [Mode.vibration.rawValue] + zonesBytes(activeZones) + u32Bytes(ampZones)
         b += [0, 0, UInt8(frequency)]
         return TriggerEffect(rawBytes: b)
