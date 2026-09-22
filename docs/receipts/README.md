@@ -9,3 +9,4 @@
 | 4 C ABI and samples | ✅ header check + samples build | ⏳ samples not run on hardware | [gate-4.md](gate-4.md) |
 | 5 Engine bindings | ✅ written (all four, at maintainer's request) | Python tested vs dylib; others uncompiled | [gate-5.md](gate-5.md) |
 | 6 Stretch research | ⏸ plan only | | [gate-6.md](gate-6.md) |
+| Audit | ✅ 60 confirmed bugs fixed | | [audit.md](audit.md) |
