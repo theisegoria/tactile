@@ -60,7 +60,7 @@ let usbIn = hex("01 0a 14 1e 28 32 3c 07 22 21 05 00 00 00 00 00 01 00 fe ff 03 
     // Source: SDL simple-state layout (ucLeftJoystickX…ucTriggerRight). Buttons byte 7
     // carries a counter in its high 6 bits, which must not leak into mute/Edge bits.
     @Test func bluetoothReduced() throws {
-        let r = hex("01 80 7f 01 ff 1f 02 fd 10 f0")
+        let r = hex("01 80 7f 01 ff 10 02 fd 10 f0")
         let s = try InputParser.parse(r, transport: .bluetooth, model: .dualSenseEdge)
         #expect(s.kind == .bluetoothReduced)
         #expect(s.leftStick == SIMD2(0x80, 0x7F))
