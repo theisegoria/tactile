@@ -43,6 +43,9 @@ final class ControllerBox: @unchecked Sendable {
     private let opTask: Task<Void, Never>
     private var inputTask: Task<Void, Never>?
     private let pcm = Mutex<PCMInput?>(nil)
+    /// Set once the owning context is destroyed: the handle stays safe to
+    /// release, but every operation reports TACTILE_ERR_NOT_CONNECTED.
+    private let invalidatedFlag = Atomic<Bool>(false)
 
     init(_ c: Controller) {
         controller = c
@@ -63,6 +66,20 @@ final class ControllerBox: @unchecked Sendable {
         inputTask?.cancel()
     }
 
+    var isInvalidated: Bool { invalidatedFlag.load(ordering: .acquiring) }
+
+    /// Usable for input and output: not invalidated and currently connected.
+    var isLive: Bool { !isInvalidated && controller.isConnected }
+
+    /// Called by context teardown. Refuses further operations and ends the op
+    /// queue; returns the op task so the caller can wait for ops that were
+    /// already queued to finish before the controller is neutralised.
+    func invalidate() -> Task<Void, Never> {
+        invalidatedFlag.store(true, ordering: .releasing)
+        ops.finish()
+        return opTask
+    }
+
     /// (Re)subscribes to input; called on connect and reconnect.
     func restartInput() {
         inputTask?.cancel()
@@ -76,8 +93,10 @@ final class ControllerBox: @unchecked Sendable {
     }
 
     func enqueue(_ op: @escaping @Sendable () async throws(TransportError) -> Void) -> Int32 {
-        guard controller.isConnected else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
-        ops.yield(op)
+        guard isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+        // After invalidate() the continuation is finished and the yield is
+        // dropped; report that instead of claiming success.
+        if case .terminated = ops.yield(op) { return TACTILE_ERR_NOT_CONNECTED.rawValue }
         return TACTILE_OK.rawValue
     }
 
@@ -122,10 +141,27 @@ final class ControllerBox: @unchecked Sendable {
         latest.withLock { $0 = s }
     }
 
+    /// Feeds PCM to the haptics stream. Nothing is queued while haptics are
+    /// stopped (returns 0): no pump is consuming the ring, and frames buffered
+    /// now would otherwise play, stale, whenever haptics start later.
     func writePCM(_ samples: [Float], channels: Int, rate: Double) -> Int32 {
         pcm.withLock { p in
-            if p == nil || p?.inputRate != rate { p = PCMInput(mixer: controller.haptics, inputRate: rate) }
-            return Int32(p?.feed(interleaved: samples, channelCount: channels) ?? 0)
+            let mixer = controller.haptics
+            guard controller.hapticsRunning else {
+                // Forget resampler history too, so a later start begins clean.
+                p = nil
+                return 0
+            }
+            if p == nil || p?.inputRate != rate { p = PCMInput(mixer: mixer, inputRate: rate) }
+            let n = Int32(p?.feed(interleaved: samples, channelCount: channels) ?? 0)
+            // The pump may have stopped between the check and the write. Its
+            // stop already requested a flush; request another so these frames
+            // are discarded by the next pump instead of playing late.
+            if !controller.hapticsRunning {
+                mixer.stream.requestClear()
+                p = nil
+            }
+            return n
         }
     }
 }
@@ -138,23 +174,53 @@ final class ContextBox: @unchecked Sendable {
         var fn: tactile_event_callback
         var user: UnsafeMutableRawPointer?
     }
-    private let callback = Mutex<Callback?>(nil)
+    /// The callback and the teardown flag share one lock, and blocks are only
+    /// enqueued while holding it, so once `closed` is set no new block can
+    /// appear on `callbackQueue` and a drain really is final.
+    private struct Dispatch {
+        var callback: Callback?
+        var closed = false
+    }
+    private let dispatch = Mutex(Dispatch())
     private var eventTask: Task<Void, Never>?
     /// Callbacks run here, off Swift's cooperative pool, so a host may call
     /// briefly-blocking entry points (get_info, haptics_start) from a callback.
     private let callbackQueue = DispatchQueue(label: "dev.tactile.callbacks")
+    private let onCallbackQueue = DispatchSpecificKey<Bool>()
+    /// Most recent controller open failure (a tactile_result), 0 if none.
+    /// Reported by wait_for_controller when no controller shows up.
+    let lastOpenError = Atomic<Int32>(0)
 
     init(options: ConnectionOptions) {
         manager = ControllerManager(options: options)
+        callbackQueue.setSpecific(key: onCallbackQueue, value: true)
         let events = manager.events()
         eventTask = Task.detached { [weak self] in
             for await e in events { self?.handle(e) }
         }
     }
 
+    private var isOnCallbackQueue: Bool { DispatchQueue.getSpecific(key: onCallbackQueue) == true }
+
+    /// Waits for every callback already queued (or running) to finish. From
+    /// inside a callback that would deadlock; there the caller's own callback
+    /// is the only one running, and later blocks already see the new state.
+    private func drainCallbacks() {
+        guard !isOnCallbackQueue else { return }
+        callbackQueue.sync {}
+    }
+
+    /// Replaces the callback. When called from outside a callback, returns
+    /// only after any invocation of the previous callback has finished; the
+    /// previous fn/user_data are never called again after that.
     func setCallback(_ cb: tactile_event_callback?, _ user: UnsafeMutableRawPointer?) {
         let value = cb.map { Callback(fn: $0, user: user) }
-        callback.withLock { $0 = value }
+        let changed = dispatch.withLock { d -> Bool in
+            guard !d.closed else { return false }
+            d.callback = value
+            return true
+        }
+        if changed { drainCallbacks() }
     }
 
     private func handle(_ e: ControllerEvent) {
@@ -163,8 +229,11 @@ final class ContextBox: @unchecked Sendable {
         case .connected(let x): (c, kind) = (x, TACTILE_EVENT_CONNECTED)
         case .reconnected(let x): (c, kind) = (x, TACTILE_EVENT_RECONNECTED)
         case .disconnected(let x): (c, kind) = (x, TACTILE_EVENT_DISCONNECTED)
-        case .failed: return
+        case .failed(_, let error):
+            lastOpenError.store(code(error), ordering: .relaxed)
+            return
         }
+        if dispatch.withLock({ $0.closed }) { return }
         let box = boxes.withLock { b -> ControllerBox in
             if let existing = b[c.id] { return existing }
             let nb = ControllerBox(c)
@@ -173,12 +242,16 @@ final class ContextBox: @unchecked Sendable {
             return nb
         }
         if kind == TACTILE_EVENT_RECONNECTED { box.restartInput() }
-        if let cb = callback.withLock({ $0 }) {
+        let event = Int32(kind.rawValue)
+        dispatch.withLock { d in
+            guard !d.closed, d.callback != nil else { return }
             let handle = Unmanaged.passRetained(box)
-            let event = Int32(kind.rawValue)
-            callbackQueue.async {
+            callbackQueue.async { [weak self] in
+                defer { handle.release() }
+                // Looked up when the block runs, not when it was queued, so a
+                // replaced or removed callback is never invoked afterwards.
+                guard let cb = self?.dispatch.withLock({ $0.closed ? nil : $0.callback }) else { return }
                 cb.fn(cb.user, OpaquePointer(handle.toOpaque()), event)
-                handle.release()
             }
         }
     }
@@ -194,13 +267,28 @@ final class ContextBox: @unchecked Sendable {
     func firstConnected() -> ControllerBox? {
         let ids = order.withLock { $0 }
         let all = boxes.withLock { b in ids.compactMap { b[$0] } }
-        return all.first { $0.controller.isConnected }
+        return all.first { $0.isLive }
     }
 
+    /// Teardown for tactile_context_destroy. After it returns no callback is
+    /// running or will run, every handle refuses further operations, ops that
+    /// were already queued have finished, and every controller is neutral and
+    /// closed.
     func shutdown() {
+        dispatch.withLock { d in
+            d.closed = true
+            d.callback = nil
+        }
         eventTask?.cancel()
-        callbackQueue.sync {}  // drain callbacks already queued
+        drainCallbacks()
+        let all = boxes.withLock { Array($0.values) }
+        let opTasks = all.map { $0.invalidate() }
         let m = manager
-        blocking { await m.shutdown() }
+        blocking {
+            // Queued ops finish (or fail) before the neutral report, so none
+            // can land after it.
+            for t in opTasks { await t.value }
+            await m.shutdown()
+        }
     }
 }

@@ -104,7 +104,6 @@ public func tactile_context_create(_ options: UnsafePointer<tactile_options>?, _
 @_cdecl("tactile_context_destroy")
 public func tactile_context_destroy(_ ctx: OpaquePointer?) {
     guard let ctx, let box = context(ctx) else { return }
-    box.setCallback(nil, nil)
     box.shutdown()
     Unmanaged<ContextBox>.fromOpaque(UnsafeRawPointer(ctx)).release()
 }
@@ -138,7 +137,11 @@ public func tactile_context_wait_for_controller(_ ctx: OpaquePointer?, _ timeout
         }
         usleep(10_000)
     } while Date() < deadline
-    return InputMonitoringPermission.status == .granted ? TACTILE_ERR_TIMEOUT.rawValue : TACTILE_ERR_PERMISSION.rawValue
+    guard InputMonitoringPermission.status == .granted else { return TACTILE_ERR_PERMISSION.rawValue }
+    // A controller was found but could not be opened (e.g. another process
+    // holds exclusive access): say why instead of a bare timeout.
+    let openError = c.lastOpenError.exchange(0, ordering: .relaxed)
+    return openError != 0 ? openError : TACTILE_ERR_TIMEOUT.rawValue
 }
 
 // MARK: Controller
@@ -174,7 +177,7 @@ public func tactile_controller_get_info(_ p: OpaquePointer?, _ out: UnsafeMutabl
     i.hardware_version = fw?.hardwareVersion ?? 0
     i.update_version = fw?.updateVersion ?? 0
     i.vibration_v2 = features?.vibrationV2 == true ? 1 : 0
-    i.connected = c.isConnected ? 1 : 0
+    i.connected = b.isLive ? 1 : 0
     copyOut(i, to: out)
     return OK
 }
@@ -182,7 +185,7 @@ public func tactile_controller_get_info(_ p: OpaquePointer?, _ out: UnsafeMutabl
 @_cdecl("tactile_controller_get_input")
 public func tactile_controller_get_input(_ p: OpaquePointer?, _ out: UnsafeMutablePointer<tactile_input_state>?) -> Int32 {
     guard let b = controller(p), let out else { return EINVAL }
-    guard b.controller.isConnected, let s = b.input() else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    guard b.isLive, let s = b.input() else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     copyOut(s, to: out)
     return OK
 }
@@ -300,6 +303,7 @@ public func tactile_trigger_machine(_ s: Int32, _ e: Int32, _ a: Int32, _ bb: In
 @_cdecl("tactile_haptics_start")
 public func tactile_haptics_start(_ p: OpaquePointer?) -> Int32 {
     guard let b = controller(p) else { return EINVAL }
+    guard !b.isInvalidated else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     let c = b.controller
     return blocking { () -> Int32 in
         do throws(TransportError) { try await c.startHaptics(); return OK } catch { return code(error) }
@@ -309,6 +313,8 @@ public func tactile_haptics_start(_ p: OpaquePointer?) -> Int32 {
 @_cdecl("tactile_haptics_stop")
 public func tactile_haptics_stop(_ p: OpaquePointer?) -> Int32 {
     guard let b = controller(p) else { return EINVAL }
+    // After context teardown the controller is closed and its pump stopped.
+    guard !b.isInvalidated else { return OK }
     let c = b.controller
     blocking { await c.stopHaptics() }
     return OK
@@ -331,6 +337,7 @@ public func tactile_haptics_play(_ p: OpaquePointer?, _ effect: Int32, _ intensi
     case TACTILE_HAPTIC_RIGHT.rawValue: .right
     default: .both
     }
+    guard !b.isInvalidated else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     let c = b.controller
     if c.hapticsRunning {
         c.haptics.play(e, side: s)
@@ -342,7 +349,7 @@ public func tactile_haptics_play(_ p: OpaquePointer?, _ effect: Int32, _ intensi
 @_cdecl("tactile_haptics_write_pcm")
 public func tactile_haptics_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePointer<Float>?, _ frames: Int32, _ channels: Int32, _ rate: Double) -> Int32 {
     guard let b = controller(p), let samples, frames >= 0, channels > 0, rate > 0 else { return EINVAL }
-    guard b.controller.isConnected else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    guard b.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     let arr = Array(UnsafeBufferPointer(start: samples, count: Int(frames) * Int(channels)))
     return b.writePCM(arr, channels: Int(channels), rate: rate)
 }
@@ -350,8 +357,13 @@ public func tactile_haptics_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePoin
 @_cdecl("tactile_haptics_get_metrics")
 public func tactile_haptics_get_metrics(_ p: OpaquePointer?, _ out: UnsafeMutablePointer<tactile_haptics_metrics>?) -> Int32 {
     guard let b = controller(p), let out else { return EINVAL }
-    guard let m = b.controller.hapticsMetrics() else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    guard b.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     var r = tactile_haptics_metrics()
+    // Connected but haptics stopped: no pump, so every metric is zero.
+    guard let m = b.controller.hapticsMetrics() else {
+        copyOut(r, to: out)
+        return OK
+    }
     r.reports_sent = UInt64(m.reportsSent)
     r.reports_dropped = UInt64(m.reportsDropped)
     r.underrun_ticks = UInt64(m.underrunTicks)

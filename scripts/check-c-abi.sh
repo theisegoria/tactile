@@ -16,9 +16,12 @@ clang++ -std=c++17 "${FLAGS[@]}" -x c++ Tests/CABI/header_check.c -L "$BIN" -lCT
 "$OUT/check_c"
 "$OUT/check_cpp"
 # Every declared function must be exported by the dylib.
+# nm runs once and is matched from memory: piping it into `grep -q` would let
+# grep exit early, nm die of SIGPIPE and pipefail report a false "missing".
+syms="$(nm -gU "$BIN/libCTactile.dylib")"
 missing=0
 for fn in $(grep -oE '\btactile_[a-z_]+\(' "$INC/tactile.h" | tr -d '(' | sort -u); do
-  if ! nm -gU "$BIN/libCTactile.dylib" | grep -q " _$fn\$"; then echo "missing export: $fn"; missing=1; fi
+  if ! grep -q " _$fn\$" <<<"$syms"; then echo "missing export: $fn"; missing=1; fi
 done
 [ $missing -eq 0 ] && echo "all header functions exported"
 exit $missing

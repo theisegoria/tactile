@@ -15,8 +15,8 @@
  *     change on a per-controller serial queue and return. Failures are recorded and
  *     readable with tactile_controller_last_error().
  *   - tactile_controller_get_input() never blocks; it copies the latest snapshot.
- *   - Callbacks run on an internal thread. Do not call tactile_context_destroy() from
- *     inside a callback.
+ *   - Callbacks run serially on an internal thread. Do not call
+ *     tactile_context_destroy() from inside a callback.
  *
  * Copyright (c) 2026 Tactile contributors. MIT licence.
  * Not affiliated with or endorsed by Sony Interactive Entertainment.
@@ -160,18 +160,31 @@ int32_t tactile_permission_request(void);
 /* Starts discovery. `options` may be NULL for defaults. Thread-safe. */
 int32_t tactile_context_create(const tactile_options *options, tactile_context **out_context);
 /* Restores every controller to neutral, closes them and frees the context.
- * Blocks until done. Invalidates controller handles for output (they remain
- * safe to release). Not callable from a callback. */
+ * Blocks until done. Output already queued is applied (or fails) before the
+ * neutral report, never after it. Once it returns, no callback is running or
+ * will run, and controller handles are invalidated: they remain safe to
+ * release, but every call on them returns TACTILE_ERR_NOT_CONNECTED (except
+ * tactile_haptics_stop, a no-op returning TACTILE_OK) and get_info reports
+ * connected = 0. Not callable from a callback. */
 void tactile_context_destroy(tactile_context *context);
 /* Registers a lifecycle callback (replaces any previous one; NULL removes).
  * The controller pointer is borrowed for the duration of the call; retain it
- * with tactile_controller_retain() to keep it. */
+ * with tactile_controller_retain() to keep it.
+ * Called from outside a callback, this waits for a running invocation of the
+ * previous callback to finish; once it returns, the previous callback and its
+ * user_data are never used again and may be freed. (Don't make a callback wait
+ * on the thread calling this, or both wait forever.) Called from inside a
+ * callback, it takes effect for every later invocation. */
 void tactile_context_set_callback(tactile_context *context, tactile_event_callback callback, void *user_data);
 /* Number of controllers seen (connected or awaiting reconnect). */
 int32_t tactile_context_controller_count(tactile_context *context);
 /* Returns a retained handle; release with tactile_controller_release(). */
 int32_t tactile_context_get_controller(tactile_context *context, int32_t index, tactile_controller **out_controller);
 /* Blocks up to timeout_ms for a connected controller. Returns a retained handle.
+ * On timeout: TACTILE_ERR_PERMISSION without Input Monitoring permission;
+ * otherwise the error of the latest controller that failed to open since the
+ * previous wait (e.g. TACTILE_ERR_BUSY when another process holds exclusive
+ * access), else TACTILE_ERR_TIMEOUT.
  * Do not call on a thread that must stay responsive. */
 int32_t tactile_context_wait_for_controller(tactile_context *context, int32_t timeout_ms, tactile_controller **out_controller);
 
@@ -221,8 +234,13 @@ int32_t tactile_haptics_stop(tactile_controller *controller);
 int32_t tactile_haptics_play(tactile_controller *controller, int32_t effect, float intensity, int32_t side);
 /* Queues float PCM (interleaved, 1 or 2+ channels, any sample rate). Non-blocking.
  * Single producer: call from one thread at a time per controller.
- * Returns the number of 3 kHz frames queued, or a negative tactile_result. */
+ * Requires tactile_haptics_start() (or a running pump from tactile_haptics_play):
+ * while haptics are stopped nothing is queued and it returns 0, so audio never
+ * plays late. Returns the number of 3 kHz frames queued, or a negative
+ * tactile_result. */
 int32_t tactile_haptics_write_pcm(tactile_controller *controller, const float *interleaved, int32_t frames, int32_t channels, double sample_rate);
+/* Pump diagnostics. All zero (TACTILE_OK) while haptics are stopped;
+ * TACTILE_ERR_NOT_CONNECTED only when the controller is disconnected. */
 int32_t tactile_haptics_get_metrics(tactile_controller *controller, tactile_haptics_metrics *out_metrics);
 
 #ifdef __cplusplus

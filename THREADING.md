@@ -21,8 +21,8 @@
 | `tactile_permission_status` | yes | no | |
 | `tactile_permission_request` | yes | may show a system prompt | call from the main thread in apps |
 | `tactile_context_create` | yes | no | starts discovery in the background |
-| `tactile_context_destroy` | yes | **yes** (neutralises and closes every controller) | never from a callback; each context destroyed once |
-| `tactile_context_set_callback` | yes | no | callbacks run serially on an internal dispatch queue (not Swift's cooperative pool); briefly-blocking calls are allowed inside, `tactile_context_destroy` is not |
+| `tactile_context_destroy` | yes | **yes** (neutralises and closes every controller) | never from a callback; each context destroyed once; queued output is applied before the neutral report; afterwards no callback runs and controller handles return `TACTILE_ERR_NOT_CONNECTED` |
+| `tactile_context_set_callback` | yes | until a running call of the previous callback returns | callbacks run serially on an internal dispatch queue (not Swift's cooperative pool); briefly-blocking calls are allowed inside, `tactile_context_destroy` is not. Once it returns (from outside a callback) the previous callback and `user_data` are never used again |
 | `tactile_context_controller_count`, `tactile_context_get_controller` | yes | no | returned handle is retained |
 | `tactile_context_wait_for_controller` | yes | **yes**, up to timeout | not on a UI/render thread |
 | `tactile_controller_retain`, `_release` | yes | no | atomic ref count |
@@ -33,5 +33,5 @@
 | `tactile_trigger_*` | yes | no | pure |
 | `tactile_haptics_start`, `_stop` | yes | briefly | |
 | `tactile_haptics_play` | yes | no | |
-| `tactile_haptics_write_pcm` | **one producer thread per controller** | no | frames beyond buffer capacity are dropped and counted |
-| `tactile_haptics_get_metrics` | yes | no | |
+| `tactile_haptics_write_pcm` | **one producer thread per controller** | no | frames beyond buffer capacity are dropped and counted; returns 0 (queues nothing) while haptics are stopped |
+| `tactile_haptics_get_metrics` | yes | no | all zero while haptics are stopped |

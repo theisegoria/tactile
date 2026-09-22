@@ -30,6 +30,10 @@ static int bytes_eq(const tactile_trigger_effect *e, const unsigned char *want) 
     return memcmp(e->bytes, want, 11) == 0;
 }
 
+static void on_event(void *user_data, tactile_controller *controller, int32_t event) {
+    (void)user_data; (void)controller; (void)event;
+}
+
 int main(void) {
     tactile_trigger_effect e;
     CHECK(tactile_abi_version() == TACTILE_ABI_VERSION);
@@ -68,6 +72,28 @@ int main(void) {
     CHECK(tactile_context_controller_count(NULL) == 0);
     tactile_controller_release(NULL);
     tactile_context_destroy(NULL);
+
+    /* Context lifecycle without hardware: replacing/removing the callback from
+     * outside a callback fences it without deadlocking, discovery-time lookups
+     * behave, and destroy returns. */
+    {
+        tactile_context *ctx = NULL;
+        tactile_controller *h = NULL;
+        int user = 0;
+        CHECK(tactile_context_create(NULL, &ctx) == TACTILE_OK && ctx != NULL);
+        tactile_context_set_callback(ctx, on_event, &user);
+        tactile_context_set_callback(ctx, on_event, NULL);
+        tactile_context_set_callback(ctx, NULL, NULL);
+        CHECK(tactile_context_get_controller(ctx, 99, &h) == TACTILE_ERR_NOT_FOUND);
+        CHECK(tactile_context_get_controller(ctx, -1, &h) == TACTILE_ERR_NOT_FOUND);
+        if (tactile_context_controller_count(ctx) == 0) {
+            int32_t r = tactile_context_wait_for_controller(ctx, 0, &h);
+            CHECK(r == TACTILE_ERR_TIMEOUT || r == TACTILE_ERR_PERMISSION || r == TACTILE_ERR_BUSY || r == TACTILE_OK);
+            if (r == TACTILE_OK) tactile_controller_release(h);
+        }
+        tactile_context_set_callback(ctx, on_event, &user);
+        tactile_context_destroy(ctx);
+    }
 
     if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     printf("C ABI check passed (ABI %u.%u, library %s)\n",
