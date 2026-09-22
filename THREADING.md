@@ -22,7 +22,7 @@
 | `tactile_permission_request` | yes | may show a system prompt | call from the main thread in apps |
 | `tactile_context_create` | yes | no | starts discovery in the background |
 | `tactile_context_destroy` | yes | **yes** (neutralises and closes every controller) | never from a callback; each context destroyed once |
-| `tactile_context_set_callback` | yes | no | callback runs on an internal thread |
+| `tactile_context_set_callback` | yes | no | callbacks run serially on an internal dispatch queue (not Swift's cooperative pool); briefly-blocking calls are allowed inside, `tactile_context_destroy` is not |
 | `tactile_context_controller_count`, `tactile_context_get_controller` | yes | no | returned handle is retained |
 | `tactile_context_wait_for_controller` | yes | **yes**, up to timeout | not on a UI/render thread |
 | `tactile_controller_retain`, `_release` | yes | no | atomic ref count |

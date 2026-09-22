@@ -140,6 +140,9 @@ final class ContextBox: @unchecked Sendable {
     }
     private let callback = Mutex<Callback?>(nil)
     private var eventTask: Task<Void, Never>?
+    /// Callbacks run here, off Swift's cooperative pool, so a host may call
+    /// briefly-blocking entry points (get_info, haptics_start) from a callback.
+    private let callbackQueue = DispatchQueue(label: "dev.tactile.callbacks")
 
     init(options: ConnectionOptions) {
         manager = ControllerManager(options: options)
@@ -171,7 +174,12 @@ final class ContextBox: @unchecked Sendable {
         }
         if kind == TACTILE_EVENT_RECONNECTED { box.restartInput() }
         if let cb = callback.withLock({ $0 }) {
-            cb.fn(cb.user, OpaquePointer(Unmanaged.passUnretained(box).toOpaque()), Int32(kind.rawValue))
+            let handle = Unmanaged.passRetained(box)
+            let event = Int32(kind.rawValue)
+            callbackQueue.async {
+                cb.fn(cb.user, OpaquePointer(handle.toOpaque()), event)
+                handle.release()
+            }
         }
     }
 
@@ -191,6 +199,7 @@ final class ContextBox: @unchecked Sendable {
 
     func shutdown() {
         eventTask?.cancel()
+        callbackQueue.sync {}  // drain callbacks already queued
         let m = manager
         blocking { await m.shutdown() }
     }
