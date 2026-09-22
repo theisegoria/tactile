@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app || true
+          swift --version
+      - name: Build (warnings are errors)
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Unit tests
+        run: swift test
+      - name: C ABI header check
+        run: ./scripts/check-c-abi.sh
+      - name: C++ sample
+        run: ./Samples/CppGameLoop/build.sh
+      - name: Swift sample app
+        run: ./Samples/SwiftSample/bundle.sh
+      - name: XCFramework
+        run: ./scripts/build-xcframework.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CTactile.xcframework
+          path: dist/CTactile.xcframework.zip
