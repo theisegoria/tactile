@@ -15,7 +15,7 @@ let package = Package(
         .library(name: "TactileHaptics", targets: ["TactileHaptics"]),
         .library(name: "TactileBridge", targets: ["TactileBridge"]),
         .library(name: "Tactile", targets: ["Tactile"]),
-        // C ABI for engines and non-Swift hosts. Header: include/tactile.h
+        // C ABI for engines and non-Swift hosts. Header: Sources/CTactileHeaders/include/tactile.h
         .library(name: "CTactile", type: .dynamic, targets: ["TactileCABI"]),
         .executable(name: "tactilectl", targets: ["tactilectl"]),
         .executable(name: "tactile-probe", targets: ["tactile-probe"]),
@@ -47,7 +47,8 @@ let package = Package(
             dependencies: ["TactileCore", "TactileTransport", "TactileHaptics", "TactileBridge"],
             swiftSettings: strict
         ),
-        .target(name: "TactileCABI", dependencies: ["Tactile"], swiftSettings: strict),
+        .target(name: "CTactileHeaders"),
+        .target(name: "TactileCABI", dependencies: ["Tactile", "CTactileHeaders"], swiftSettings: strict),
         .executableTarget(name: "tactilectl", dependencies: ["Tactile"], swiftSettings: strict),
         .executableTarget(
             name: "tactile-probe",
