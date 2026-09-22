@@ -8,3 +8,11 @@ DerivedData/
 /build
 /dist
 captures/*.bin
+
+# Binding build products
+bindings/unreal/TactileUE/Source/ThirdParty/CTactile/include/tactile.h
+bindings/unreal/TactileUE/Source/ThirdParty/CTactile/lib/Mac/*.dylib
+bindings/godot/godot-cpp/
+bindings/godot/demo/bin/*.dylib
+bindings/godot/.sconsign.dblite
+__pycache__/
