@@ -366,13 +366,18 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         let mixer = HapticsMixer()
         let sink = CountingSink()
         let pump = HapticsPump(mixer: mixer, sink: sink, sendWhileIdle: true)
+        let clock = ContinuousClock()
+        let t0 = clock.now
         pump.start()
         try await Task.sleep(for: .milliseconds(320))
         pump.stop()
+        let elapsedMs = Double((clock.now - t0).components.attoseconds) / 1e15 + Double((clock.now - t0).components.seconds) * 1000
         try await Task.sleep(for: .milliseconds(30))
         let reports = sink.reports.withLock { $0 }
-        // 320 ms / 10.667 ms ≈ 30 reports; allow for CI scheduling slack.
-        #expect(reports.count >= 22 && reports.count <= 33)
+        // One report per 10.667 ms of the time that actually elapsed (CI VMs
+        // oversleep); allow a few reports of scheduling slack either way.
+        let expected = elapsedMs / 10.6667
+        #expect(Double(reports.count) >= expected * 0.7 && Double(reports.count) <= expected + 3)
         #expect(reports.allSatisfy { $0.count == 141 && CRC32.verify($0, prefix: .output) })
         let m = pump.metrics()
         #expect(abs(m.tickIntervalMeanUs - 10_666.7) < 1_500)
@@ -385,12 +390,16 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         pump.start()
         try await Task.sleep(for: .milliseconds(30))
         for _ in 0..<20 { pump.stop(); pump.start() }  // back to back, within one period
+        let clock = ContinuousClock()
         let before = sink.reports.withLock { $0.count }
+        let t0 = clock.now
         try await Task.sleep(for: .milliseconds(320))
         pump.stop()
         let after = sink.reports.withLock { $0.count }
-        // One pump: ≈30 reports in 320 ms. Two surviving threads would give ≈60.
-        #expect(after - before <= 36)
+        let d = (clock.now - t0).components
+        let elapsedMs = Double(d.seconds) * 1000 + Double(d.attoseconds) / 1e15
+        // One pump: one report per 10.667 ms elapsed. Two surviving threads would double it.
+        #expect(Double(after - before) <= elapsedMs / 10.6667 * 1.25 + 2)
         try await Task.sleep(for: .milliseconds(40))
         #expect(sink.reports.withLock { $0.count } == after)  // nothing after stop() returned
         #expect(!pump.isRunning)
