@@ -72,7 +72,11 @@ struct Probe {
                 for chunk in stride(from: 0, to: bytes.count, by: 32) {
                     print("    " + Array(bytes[chunk..<min(chunk + 32, bytes.count)]).hexString)
                 }
-                log("  descriptor report IDs: \(DescriptorScan.reportIDs(bytes))")
+                if let d = try? HIDDescriptor(parsing: bytes) {
+                    for r in d.reports { log("  \(r)\(r.isVendorDefined ? " [vendor]" : "")") }
+                } else {
+                    log("  descriptor report IDs: \(DescriptorScan.reportIDs(bytes)) (full parse failed)")
+                }
             }
         } catch {
             log("Discovery failed: \(error)")

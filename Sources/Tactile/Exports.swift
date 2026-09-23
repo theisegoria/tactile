@@ -2,6 +2,7 @@
 @_exported public import TactileTransport
 @_exported public import TactileHaptics
 @_exported public import TactileBridge
+@_exported public import TactileAudio
 
 /// Library version (semantic versioning; see CHANGELOG.md).
 public enum TactileVersion {

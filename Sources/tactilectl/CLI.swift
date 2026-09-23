@@ -35,6 +35,15 @@ struct CLI {
       haptic-bench [seconds]            measure pump cadence/CPU with a null sink (no controller needed)
       permission                        show / request Input Monitoring
 
+    experimental (gate 6, unverified protocol facts):
+      descriptor                        parsed report descriptor (all report IDs and sizes)
+      audio [--headphone N] [--speaker N] [--mic N] [--path headphones|headphone-left|headphone-left-speaker|speaker]
+      speaker <file> [--gain G] [--bitrate BPS] [--report-length N]   Opus → report 0x36
+      mic-scan [seconds]                look for the microphone uplink in raw input
+      mic-record <out.wav> [seconds] [--report 0xID --toc N [--length N]]
+      features [--label L] [--save f.json]   read every declared feature report (read-only)
+      features-diff <a.json> <b.json>   compare two snapshots (e.g. two Edge profiles)
+
     Output is returned to neutral (triggers off, rumble off, lightbar restored)
     on exit, including Ctrl-C. --hold keeps the effect for N seconds first
     (default 3 for output commands).
@@ -63,6 +72,7 @@ struct CLI {
             case "help", "-h", "--help": print(usage)
             case "permission": permission()
             case "list": try await list()
+            case "features-diff": try ExperimentalCommands.featuresDiff(rest)
             case "haptic-bench": try await HapticBench.run(seconds: try rest.first.map { try Commands.parseSeconds($0, "haptic-bench seconds") } ?? 5)
             default:
                 let holdSeconds = hold
@@ -150,6 +160,12 @@ struct CLI {
             try await Commands.hold(seconds)
         case "haptic": try await Commands.haptic(c, a)
         case "conflicts": Commands.conflicts(c)
+        case "descriptor": ExperimentalCommands.descriptor(c)
+        case "audio": try await ExperimentalCommands.audio(c, a); try await Commands.hold(hold ?? 3)
+        case "speaker": try await ExperimentalCommands.speaker(c, a)
+        case "mic-scan": _ = try await ExperimentalCommands.micScan(c, a)
+        case "mic-record": try await ExperimentalCommands.micRecord(c, a)
+        case "features": try await ExperimentalCommands.features(c, a)
         default: throw CLIError("unknown command '\(cmd)'\n\n\(usage)")
         }
     }
