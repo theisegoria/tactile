@@ -8,5 +8,5 @@
 | 3 Bluetooth haptics | ✅ built, software-measured | ⏳ pending (framing is 🔬) | [gate-3.md](gate-3.md) |
 | 4 C ABI and samples | ✅ header check + samples build | ⏳ samples not run on hardware | [gate-4.md](gate-4.md) |
 | 5 Engine bindings | ✅ written (all four, at maintainer's request) | Python tested vs dylib; others uncompiled | [gate-5.md](gate-5.md) |
-| 6 Stretch research | ⏸ plan only | | [gate-6.md](gate-6.md) |
+| 6 Stretch research | ✅ experimental code (at maintainer's request) | ⏳ nothing verified | [gate-6.md](gate-6.md) |
 | Audit | ✅ 60 confirmed bugs fixed | | [audit.md](audit.md) |
