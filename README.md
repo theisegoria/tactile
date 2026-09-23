@@ -35,6 +35,7 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 | `TactileTransport` | CoreHID discovery, report I/O, reconnects, shared/exclusive modes, permission checks. |
 | `TactileHaptics` | Float PCM → 3 kHz 8-bit stereo, real-time 10.67 ms report pump, audio-tap and parametric sources. |
 | `TactileBridge` | Pairs HID devices with `GCController`s by Bluetooth MAC address. |
+| `TactileAudio` | **Experimental.** Speaker/headphone audio (Opus, report 0x36) and microphone uplink research, via the system Opus codec. |
 | `Tactile` | High-level `Controller` facade. |
 | `CTactile` | C ABI (`include/tactile.h`) for engines and non-Swift hosts. |
 | `tactilectl` | CLI demo and hardware test harness. |

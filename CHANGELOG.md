@@ -6,6 +6,19 @@ Before 1.0.0, minor versions may break the Swift API; the C ABI major
 
 ## [Unreleased]
 
+### Added (experimental — gate 6, unverified protocol facts)
+- `AudioSettings` on `OutputState`: headphone/speaker/mic volume and output path.
+- `HIDDescriptor`: report-descriptor parser (sizes of every input/output/feature report).
+- `SpeakerAudioReportBuilder` (report 0x36, configurable framing) and the new
+  `TactileAudio` module: Opus encode/decode via the system codec, `SpeakerStream`,
+  `MicUplinkDecoder`.
+- `UplinkScanner` / `UplinkExtractor` to locate an Opus microphone stream in raw input.
+- `FeatureSnapshot` + diff for Edge profile / stick-module research (read-only).
+- `DeviceConnection.rawInputReports()` and `sendExperimentalOutputReport(_:)`.
+- `Controller` experimental API and `tactilectl` commands: `descriptor`, `audio`,
+  `speaker`, `mic-scan`, `mic-record`, `features`, `features-diff`.
+- Not exposed through the C ABI yet.
+
 ## [0.1.0] — 2026-09-22
 
 ### Added

@@ -63,3 +63,17 @@ runs over Bluetooth.** Record results (and paste logs) in `docs/receipts/`.
 | 4.1 | `Samples/CppGameLoop/build.sh` then run it | Cross clicks, Circle toggles weapon on R2, left stick drives lightbar |
 | 4.2 | `Samples/SwiftSample/bundle.sh && open …/TactileDemo.app` | UI shows live input; buttons work |
 | 4.3 | `./bundle.sh app-store` build, run sandboxed | still opens the controller (**confirms sandbox entitlements**) |
+
+## Gate 6 — experimental audio and Edge research
+
+Record everything in `docs/receipts/gate-6.md`; promote confirmed facts in `PROTOCOL.md`.
+
+| # | Step | Expect / record |
+|---|---|---|
+| 6.1 | `tactilectl descriptor` (Bluetooth, then USB; DualSense, then Edge) | is output report 0x36 declared? its size? any vendor input reports besides 0x31? |
+| 6.2 | `tactilectl audio --path speaker --speaker 200` then `audio --path headphones --headphone 100` with headphones plugged in | audible click/hiss or routing change? any effect on `monitor` headphone flag |
+| 6.3 | `tactilectl speaker tone.wav` | sound from the speaker? If not, vary `SpeakerAudioFraming` (length prefix none/u16, payloadOffset, nibble order) and `--bitrate` |
+| 6.4 | `tactilectl --exclusive mic-scan 10` while talking into the controller | an unknown report ID appears only while audio is enabled? candidate TOC offset? |
+| 6.5 | `tactilectl mic-record out.wav 10` | playable speech in `out.wav`; try `--rate 16000/48000` if garbled |
+| 6.6 | Edge: `tactilectl features --label p1 --save p1.json`, switch profile (Fn + face button), `features --label p2 --save p2.json`, `features-diff p1.json p2.json` | which reports and bytes change per profile |
+| 6.7 | Edge: swap a stick module, snapshot again, diff | reports that identify the module |

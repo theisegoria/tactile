@@ -1,28 +1,47 @@
-# Gate 6 — stretch research plan (report only; nothing implemented)
+# Gate 6 receipt — stretch research (experimental code, no hardware)
 
-Implement only what can be verified on hardware.
+The prompt says to implement only what can be verified on hardware. The
+maintainer has no controller and asked for the gate-6 code anyway, so it is
+implemented as **experimental**: clearly labelled APIs, every uncertain detail
+configurable, read-only where a mistake could persist on the device.
 
-## Speaker / headphone / mic audio over Bluetooth
+## What was built
 
-Lead (🔬, unlicensed repository, facts only): speaker audio in output report
-`0x36` as Opus (CELT) 48 kHz stereo, 10 ms frames; mic uplink as Opus 24 kHz.
+| Piece | Where | Tested without hardware |
+|---|---|---|
+| Audio volume/routing fields (0x31 bytes 4–7, `valid_flag0` bits 4–7) | `TactileCore/AudioSettings.swift` | ✅ byte-level tests |
+| HID report-descriptor parser (sizes of all reports, vendor pages, push/pop, long items) | `TactileCore/HIDDescriptor.swift` | ✅ |
+| Report 0x36 speaker framing (seq/tag, length prefix none/u8/u16, CRC) | `TactileCore/SpeakerAudioReport.swift` | ✅ |
+| Opus TOC decoding, uplink scanner and extractor | `TactileCore/Opus.swift` | ✅ synthetic and real-encoder uplinks |
+| Feature-report snapshot + diff | `TactileCore/FeatureSnapshot.swift` | ✅ |
+| Opus encode/decode via AudioToolbox (no dependency) | `TactileAudio/OpusCodec.swift` | ✅ round trip at 48 kHz stereo and 24 kHz mono |
+| Speaker streaming (file → 48 kHz stereo → Opus → 0x36, 10 ms pacing) | `TactileAudio/SpeakerStream.swift` | ✅ with a fake sender |
+| Mic uplink decode to WAV | `TactileAudio/MicUplink.swift` | ✅ scanner → decoder → WAV on synthetic reports |
+| Raw input stream; CRC-gated, rate-capped raw output | `TactileTransport/DeviceConnection.swift` | builds; exercised through facade tests only indirectly |
+| Controller API + `tactilectl` commands | `Tactile/Controller+Experimental.swift`, `tactilectl/ExperimentalCommands.swift` | `features-diff` run end to end |
 
-Plan:
-1. Parse the report descriptor from `tactile-probe list` for report `0x36` size and
-   any uplink report IDs.
-2. Enable audio routing via the 0x31 audio fields (bytes 4–7: headphone/speaker/mic
-   volume, audio control; `valid_flag0` bits 4–7) — needs raw-byte access; add an
-   experimental `OutputState.rawAudio` only once confirmed.
-3. Encode a 1 kHz tone with libopus (would be the first third-party dependency;
-   keep it in a separate optional target) and send at 100 Hz; listen.
-4. Capture input reports while speaking into the controller mic; look for a
-   periodic report with Opus TOC bytes.
+## Findings from software alone
 
-## Edge profiles and stick modules
+- **macOS can encode and decode Opus natively** (`kAudioFormatOpus` through
+  `AVAudioConverter`), so no libopus dependency is needed.
+- For 48 kHz stereo 10 ms frames the system encoder emits TOC byte `0xF4`
+  (config 30 = CELT fullband 10 ms, stereo) — exactly the format the lead
+  describes. 24 kHz mono gives `0x60` (hybrid SWB 10 ms).
+- At 96 kb/s packets are ~85–100 bytes after a larger first packet (~210 B), so a
+  0x36 report needs roughly 100+ bytes of payload; `SpeakerStream` drops (never
+  truncates) packets that do not fit and reports it.
+- The uplink scanner's first design rejected real Opus from a steady tone (the
+  byte after the TOC barely varies); it now compares the whole packet body minus
+  the CRC. Digital silence may still produce identical packets — talk while scanning.
 
-1. Dump every feature report ID declared in the Edge descriptor (USB and BT) with
-   `tactile-probe features` extended to arbitrary IDs.
-2. Switch profiles on the controller (Fn + face buttons) and diff feature dumps.
-3. Swap stick modules if available and diff again.
+## Unknowns that only hardware can settle
 
-Evidence and results go in this file; facts that pass go into `PROTOCOL.md`.
+Whether 0x36 exists in the descriptor and its size; the real 0x36 framing; which
+output path values work; whether audio must be enabled before the uplink appears
+and which report carries it; what Edge profile switches change. TESTING.md §Gate 6
+lists the steps.
+
+## PROTOCOL.md changes
+
+"Research leads" replaced by "Gate 6 — experimental", listing each fact, its
+source and status.

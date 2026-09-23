@@ -128,6 +128,25 @@ are not implemented.
 | Whether CoreHID input/feature buffers include the report-ID byte | ⚠️ normalised both ways; the probe reports it |
 | Opening a gamepad needs Input Monitoring; without it opens fail (`kIOReturnNotPermitted` in IOKit; `HIDDeviceError.notPermitted` expected in CoreHID) | ⚠️ |
 
-## Research leads (gate 6, not implemented)
+## Gate 6 — experimental (implemented, nothing verified) 🔬
 
-- Speaker audio in report `0x36` as Opus/CELT 48 kHz stereo 10 ms frames; mic uplink Opus 24 kHz (OPUS). 🔬
+Everything below is implemented behind clearly marked experimental APIs
+(`AudioSettings`, `TactileAudio`, `Controller+Experimental`, `tactilectl` commands
+listed under "experimental") so it can be tested the moment hardware is available.
+
+| Fact | Source | Status | Where |
+|---|---|---|---|
+| Common-block bytes 4–7 = headphone volume, speaker volume, mic volume, audio control; enabled by `valid_flag0` bits 4–7 | LNX (audio-jack work) | 🔬 | `AudioSettings` |
+| Audio control bits 4–5 select the output path (0 headphones … 3 speaker); intermediate values | LNX | 🔬 | `AudioOutputPath` |
+| Volume ranges: headphone ≤ 0x7F, mic ≤ 0x40 (clamped), speaker 0–0xFF | LNX | 🔬 | `AudioSettings.encode` |
+| Speaker/headphone audio in output report `0x36` as Opus, CELT, 48 kHz stereo, 10 ms per report | OPUS | 🔬 | `SpeakerAudioReportBuilder`, `SpeakerStream` |
+| `0x36` layout: byte 1 seq/tag, then a length prefix and the Opus packet, CRC-32 (0xA2) — **guessed** | none (by analogy with 0x31/0x32) | 🔬 configurable (`SpeakerAudioFraming`) | |
+| `0x36` length: taken from the controller's own report descriptor at runtime | — | parser tested | `HIDDescriptor` |
+| Microphone uplink as Opus at 24 kHz; report ID and layout unknown | OPUS | 🔬 found at runtime by `UplinkScanner` | `mic-scan` |
+| macOS's built-in Opus encoder produces TOC `0xF4` (CELT FB 10 ms stereo) for 48 kHz stereo — the exact format of the lead | this project, AudioToolbox | ✅ verified in software (not on device) | `OpusCodecTests` |
+| Edge profiles / stick modules: which feature reports change | — | unknown; read-only snapshot + diff tooling | `features`, `features-diff` |
+
+Safety rules for the experimental code: no feature report is ever **written**;
+the raw output path refuses report IDs that have validated paths (0x31, 0x02,
+0x32), requires a valid CRC over Bluetooth, and is capped at 250 reports/s.
+Neutral state does not touch audio settings (their power-on defaults are unknown).
