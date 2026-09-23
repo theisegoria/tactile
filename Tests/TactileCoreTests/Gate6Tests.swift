@@ -141,7 +141,12 @@ import Testing
         for r in uplinkReports(100) { s.add(r) }
         // Known reports are ignored; a constant non-audio report is not a candidate.
         for _ in 0..<100 { s.add([0x31] + [UInt8](repeating: 0x60, count: 77)) }
-        for _ in 0..<100 { s.add([0x40, 0x60, 0x60, 0x60]) }
+        // A constant field in a report whose CRC and counter change every time.
+        for k in 0..<100 {
+            var r: [UInt8] = [0x40, UInt8(k), 0x60, 0x60, 0x60, 0, 0, 0, 0]
+            CRC32.seal(&r, prefix: .input)
+            s.add(r)
+        }
         let c = s.candidates()
         let best = try #require(c.first)
         #expect(best.reportID == 0x35 && best.tocOffset == 4 && best.lengthOffset == 3)

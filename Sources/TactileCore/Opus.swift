@@ -73,6 +73,8 @@ public struct UplinkScanner: Sendable {
     public var ignoredReportIDs: Set<UInt8> = [0x01, 0x31]
     public var maxOffset = 24
     public var minSamples = 20
+    /// Trailing bytes that are not payload (4 = Bluetooth CRC; 0 over USB).
+    public var trailerBytes = 4
     private var byID: [UInt8: [[UInt8]]] = [:]
     private let cap = 400
 
@@ -103,8 +105,15 @@ public struct UplinkScanner: Sendable {
                 guard [10_000, 20_000].contains(t.frameDurationMicros), t.frameCountCode <= 1 else { continue }
                 let confidence = Double(n) / Double(reports.count)
                 guard confidence >= 0.8 else { continue }
-                // The bytes after the TOC must vary, or this is just a constant field.
-                let following = Set(reports.compactMap { off + 1 < $0.count ? $0[off + 1] : nil })
+                // The compressed bytes after the TOC must vary, or this is just a
+                // constant field. Steady input repeats the first payload bytes, so
+                // compare everything after the TOC. (Digital silence can produce
+                // identical packets: make noise into the mic while scanning.)
+                // The trailing four bytes are excluded: a Bluetooth CRC changes in
+                // every report and would make any constant field look like audio.
+                let following = Set(reports.map { r in
+                    Array(r[min(off + 1, r.count)..<max(min(off + 1, r.count), r.count - trailerBytes)])
+                })
                 guard following.count > reports.count / 4 else { continue }
                 var lengthOffset: Int?
                 if off >= 1 {

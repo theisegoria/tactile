@@ -44,6 +44,12 @@ public struct InputEvent: Sendable {
     public var timestamp: SuspendingClock.Instant
 }
 
+/// One raw input report (report ID first), before any parsing.
+public struct RawInputReport: Sendable {
+    public var bytes: [UInt8]
+    public var timestamp: SuspendingClock.Instant
+}
+
 /// An open controller. All methods are safe to call from any task.
 public actor DeviceConnection {
     public nonisolated let info: DeviceInfo
@@ -79,6 +85,8 @@ public actor DeviceConnection {
     private var reassertTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
     private var subscribers: [UUID: AsyncStream<InputEvent>.Continuation] = [:]
+    private var rawSubscribers: [UUID: AsyncStream<RawInputReport>.Continuation] = [:]
+    private var experimentalLimiter = RateLimiter(maxPerSecond: 250, burst: 4)
     private var lightbarReleased = false
     private var suppressRumble = false
     private let clock = ContinuousClock()
@@ -251,9 +259,29 @@ public actor DeviceConnection {
 
     private func removeSubscriber(_ id: UUID) { subscribers[id] = nil }
 
+    /// EXPERIMENTAL (gate 6): every input report as received, including report
+    /// IDs the parser does not understand (for example a microphone uplink).
+    public func rawInputReports(bufferingNewest n: Int = 256) -> AsyncStream<RawInputReport> {
+        let (stream, cont) = AsyncStream<RawInputReport>.makeStream(bufferingPolicy: .bufferingNewest(n))
+        guard isOpen, !closing else {
+            cont.finish()
+            return stream
+        }
+        let id = UUID()
+        rawSubscribers[id] = cont
+        cont.onTermination = { [weak self] _ in
+            Task { await self?.removeRawSubscriber(id) }
+        }
+        return stream
+    }
+
+    private func removeRawSubscriber(_ id: UUID) { rawSubscribers[id] = nil }
+
     private func finishSubscribers() {
         for c in subscribers.values { c.finish() }
         subscribers.removeAll()
+        for c in rawSubscribers.values { c.finish() }
+        rawSubscribers.removeAll()
     }
 
     private func startMonitoring(_ client: HIDDeviceClient) {
@@ -285,6 +313,10 @@ public actor DeviceConnection {
         if let id, bytes.first != id { bytes.insert(id, at: 0) }
         guard let rid = bytes.first else { return }
         if !observedReportIDs.contains(rid) { observedReportIDs.append(rid) }
+        if !rawSubscribers.isEmpty {
+            let raw = RawInputReport(bytes: bytes, timestamp: timestamp)
+            for c in rawSubscribers.values { c.yield(raw) }
+        }
         guard let state = try? InputParser.parse(
             bytes, transport: info.transport, model: info.model, verifyCRC: options.verifyInputCRC)
         else { return }
@@ -432,6 +464,23 @@ public actor DeviceConnection {
         guard isOpen, !closing else { throw .closed }
         guard info.transport == .bluetooth else { throw .notSupported("audio haptics over USB use the USB audio interface") }
         guard report.first == HapticsFormat.reportID else { throw .notSupported("not a 0x32 report") }
+        try await setReport(report)
+    }
+
+    /// Report IDs with dedicated, validated send paths; the experimental path
+    /// refuses them so it cannot bypass rate limiting or state ownership.
+    public static let reservedOutputReportIDs: Set<UInt8> = [OutputLayout.bluetoothReportID, OutputLayout.usbReportID, HapticsFormat.reportID]
+
+    /// EXPERIMENTAL (gate 6): sends a raw output report such as speaker audio
+    /// (0x36). Bluetooth reports must carry a valid CRC. Capped at 250 reports/s;
+    /// reports over the cap are refused with `ioFailure`, never queued.
+    public func sendExperimentalOutputReport(_ report: [UInt8]) async throws(TransportError) {
+        guard isOpen, !closing else { throw .closed }
+        guard let id = report.first, !Self.reservedOutputReportIDs.contains(id) else {
+            throw .notSupported("use the dedicated API for report 0x\(String(report.first ?? 0, radix: 16))")
+        }
+        let now = UInt64((clock.now - epoch).nanoseconds)
+        guard experimentalLimiter.tryAcquire(now: now) else { throw .ioFailure("experimental output rate limit exceeded") }
         try await setReport(report)
     }
 

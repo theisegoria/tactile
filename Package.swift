@@ -15,6 +15,8 @@ let package = Package(
         .library(name: "TactileHaptics", targets: ["TactileHaptics"]),
         .library(name: "TactileBridge", targets: ["TactileBridge"]),
         .library(name: "Tactile", targets: ["Tactile"]),
+        // EXPERIMENTAL (gate 6): speaker / mic audio research.
+        .library(name: "TactileAudio", targets: ["TactileAudio"]),
         // C ABI for engines and non-Swift hosts. Header: Sources/CTactileHeaders/include/tactile.h
         .library(name: "CTactile", type: .dynamic, targets: ["TactileCABI"]),
         .executable(name: "tactilectl", targets: ["tactilectl"]),
@@ -36,6 +38,12 @@ let package = Package(
             linkerSettings: [.linkedFramework("AVFAudio")]
         ),
         .target(
+            name: "TactileAudio",
+            dependencies: ["TactileCore"],
+            swiftSettings: strict,
+            linkerSettings: [.linkedFramework("AVFAudio"), .linkedFramework("AudioToolbox")]
+        ),
+        .target(
             name: "TactileBridge",
             dependencies: ["TactileCore", "TactileTransport"],
             swiftSettings: strict,
@@ -44,7 +52,7 @@ let package = Package(
         // High-level facade: one Controller object tying transport, haptics and bridge together.
         .target(
             name: "Tactile",
-            dependencies: ["TactileCore", "TactileTransport", "TactileHaptics", "TactileBridge"],
+            dependencies: ["TactileCore", "TactileTransport", "TactileHaptics", "TactileBridge", "TactileAudio"],
             swiftSettings: strict
         ),
         .target(name: "CTactileHeaders"),
@@ -57,6 +65,7 @@ let package = Package(
             linkerSettings: [.linkedFramework("GameController")]
         ),
         .testTarget(name: "TactileCoreTests", dependencies: ["TactileCore"], swiftSettings: strict),
+        .testTarget(name: "TactileAudioTests", dependencies: ["TactileAudio", "TactileCore"], swiftSettings: strict),
         .testTarget(name: "TactileHapticsTests", dependencies: ["TactileHaptics", "TactileCore"], swiftSettings: strict),
     ],
     swiftLanguageModes: [.v6]
