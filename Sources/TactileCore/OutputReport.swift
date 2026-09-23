@@ -33,12 +33,16 @@ public struct OutputState: Sendable, Hashable, Codable {
     /// When true the report also asks the firmware to fade out its own boot
     /// lightbar animation, which is required once before lightbar colours apply.
     public var releaseLightbarAnimation: Bool
+    /// EXPERIMENTAL (gate 6): headphone/speaker/mic volume and output path.
+    public var audio: AudioSettings?
 
     public init(
         rumble: Rumble? = nil, leftTrigger: TriggerEffect? = nil, rightTrigger: TriggerEffect? = nil,
         lightbar: LightbarColor? = nil, playerLEDs: PlayerLEDs? = nil, playerLEDBrightness: LEDBrightness? = nil,
-        muteLED: MuteLED? = nil, micMuted: Bool? = nil, releaseLightbarAnimation: Bool = false
+        muteLED: MuteLED? = nil, micMuted: Bool? = nil, releaseLightbarAnimation: Bool = false,
+        audio: AudioSettings? = nil
     ) {
+        self.audio = audio
         self.rumble = rumble
         self.leftTrigger = leftTrigger
         self.rightTrigger = rightTrigger
@@ -68,6 +72,7 @@ public struct OutputState: Sendable, Hashable, Codable {
         if let v = other.muteLED { s.muteLED = v }
         if let v = other.micMuted { s.micMuted = v }
         s.releaseLightbarAnimation = s.releaseLightbarAnimation || other.releaseLightbarAnimation
+        if let a = other.audio { s.audio = (s.audio ?? AudioSettings()).merging(a) }
         return s
     }
 }
@@ -104,6 +109,15 @@ public enum OutputLayout {
     public static let flag0HapticsSelect: UInt8 = 1 << 1
     public static let flag0RightTrigger: UInt8 = 1 << 2
     public static let flag0LeftTrigger: UInt8 = 1 << 3
+    public static let flag0HeadphoneVolume: UInt8 = 1 << 4
+    public static let flag0SpeakerVolume: UInt8 = 1 << 5
+    public static let flag0MicVolume: UInt8 = 1 << 6
+    public static let flag0AudioControl: UInt8 = 1 << 7
+    // Common-block audio bytes (gate 6, 🔬 semantics).
+    public static let headphoneVolume = 4
+    public static let speakerVolume = 5
+    public static let micVolume = 6
+    public static let audioControl = 7
     // valid_flag1
     public static let flag1MuteLED: UInt8 = 1 << 0
     public static let flag1PowerSave: UInt8 = 1 << 1
@@ -186,6 +200,7 @@ public struct OutputReportBuilder: Sendable {
             c[L.validFlag2] |= L.flag2LightbarSetup
             c[L.lightbarSetup] = L.lightbarSetupLightOut
         }
+        s.audio?.encode(into: &c)
         return c
     }
 
