@@ -16,6 +16,7 @@
 		42AE9174B69655477E4CE564 /* LabSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2590748E86C9DA795EB077D /* LabSession.swift */; };
 		46DA9DD0A46AA733742BA7E2 /* SessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */; };
 		5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */; };
+		6D0D648A3CAE0EC1242B8639 /* PlayersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE8293400FC63263EF99AF3 /* PlayersView.swift */; };
 		7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24394A429FC00BE2DD62181 /* TriggerEditor.swift */; };
 		77B2041F1FE3AE3893BBD053 /* ControllerDiagram.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */; };
 		926AE7128C758FDAB618C1FD /* LabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D9259E306C4360EE0F4857 /* LabModels.swift */; };
@@ -27,6 +28,7 @@
 		C82099B45CEABD80D7953E65 /* AudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503741E72C65CE510C91BE4F /* AudioView.swift */; };
 		D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */; };
 		DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A625665CB92DFD2ED26F036 /* LabRootView.swift */; };
+		F4F76B294455D61443F36E81 /* ScreenshotTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416C7BD07CE732AEBF5C014E /* ScreenshotTour.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +51,7 @@
 /* Begin PBXFileReference section */
 		0D220BD136177BEF0FBED642 /* TactileLabTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		33204A160FAEAE5EEB251769 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		416C7BD07CE732AEBF5C014E /* ScreenshotTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTour.swift; sourceTree = "<group>"; };
 		503741E72C65CE510C91BE4F /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioView.swift; sourceTree = "<group>"; };
 		69D9259E306C4360EE0F4857 /* LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabModels.swift; sourceTree = "<group>"; };
 		6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMonitor.swift; sourceTree = "<group>"; };
@@ -58,6 +61,7 @@
 		9A625665CB92DFD2ED26F036 /* LabRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabRootView.swift; sourceTree = "<group>"; };
 		A2046C472620EF963F29AE2C /* TestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestsView.swift; sourceTree = "<group>"; };
 		A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTests.swift; sourceTree = "<group>"; };
+		CBE8293400FC63263EF99AF3 /* PlayersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayersView.swift; sourceTree = "<group>"; };
 		CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsService.swift; sourceTree = "<group>"; };
 		CFA2849BB92392E532E514F6 /* EffectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectsView.swift; sourceTree = "<group>"; };
 		D24394A429FC00BE2DD62181 /* TriggerEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEditor.swift; sourceTree = "<group>"; };
@@ -153,6 +157,7 @@
 			isa = PBXGroup;
 			children = (
 				F469BEFB9C7243E4226CFBFA /* LabUITests.swift */,
+				416C7BD07CE732AEBF5C014E /* ScreenshotTour.swift */,
 			);
 			path = TactileLabUITests;
 			sourceTree = "<group>";
@@ -166,6 +171,7 @@
 				CFA2849BB92392E532E514F6 /* EffectsView.swift */,
 				FE46081E9B123EF593E97744 /* InputView.swift */,
 				9A625665CB92DFD2ED26F036 /* LabRootView.swift */,
+				CBE8293400FC63263EF99AF3 /* PlayersView.swift */,
 				A2046C472620EF963F29AE2C /* TestsView.swift */,
 				D24394A429FC00BE2DD62181 /* TriggerEditor.swift */,
 			);
@@ -329,6 +335,7 @@
 				DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */,
 				42AE9174B69655477E4CE564 /* LabSession.swift in Sources */,
 				D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */,
+				6D0D648A3CAE0EC1242B8639 /* PlayersView.swift in Sources */,
 				5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */,
 				408D86799B5F21EB6CC168B8 /* TestsView.swift in Sources */,
 				7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */,
@@ -340,6 +347,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1D59EB6CE24DB7FB2D1FC5D /* LabUITests.swift in Sources */,
+				F4F76B294455D61443F36E81 /* ScreenshotTour.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

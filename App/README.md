@@ -6,7 +6,7 @@ A native SwiftUI workspace for exploring DualSense and DualSense Edge over Bluet
 
 Open `TactileLab.xcodeproj` in Xcode 27.1, or run `./scripts/run-lab.sh` from the repository root. The Codex Run action invokes the same script. It preserves an already-running app: quit that app yourself to load a newly compiled version.
 
-`./scripts/run-lab.sh --build-only` builds without opening a window. `./scripts/run-lab.sh --simulate` opens the visibly labeled simulation when no app is already running. Simulator scenarios can be selected with `--scenario connected`, `denied`, `no-device`, `multiple`, `stale`, or `failure`. Simulation sends no controller output and establishes no physical acceptance.
+`./scripts/run-lab.sh --build-only` builds without opening a window. `./scripts/run-lab.sh --simulate` opens the visibly labeled simulation when no app is already running. Simulator scenarios can be selected with `--scenario connected`, `denied`, `no-device`, `multiple`, `split` (four players, one seat held), `stale`, or `failure`. Simulation sends no controller output and establishes no physical acceptance.
 
 The checked-in project is generated from `project.yml` with XcodeGen 2.44.1. Run `xcodegen generate` after changing targets or adding files. The post-generation script sets the Icon Composer file type because this XcodeGen version does not recognize `.icon` automatically. App, unit-test and UI-test schemes are shared. `UITesting` uses a distinct bundle identifier so test teardown does not terminate the normal app.
 
@@ -25,15 +25,20 @@ Pair a controller in Bluetooth settings, allow Input Monitoring, and select it. 
 - **Effects:** lightbar, player/mute LEDs, rumble, adaptive trigger presets and validated custom parameters, parametric haptics, audio-file haptics and host-microphone haptics.
 - **Audio:** experimental routing, speaker playback, framing controls, microphone candidate scans and WAV recording.
 - **Diagnostics:** firmware, report descriptor sizes, conflicts, GameController correlation, haptics metrics, filtered raw reports and read-only feature snapshots/comparisons.
+- **Players:** every connected controller as a numbered player for local multiplayer and split screen: live sticks, triggers and buttons per controller, identify, move between seats, held seats for disconnected controllers, optional player lights.
 - **Tests:** explicit output checks and human Pass/Fail/Skipped/Unverified observations, with local versioned JSON and Markdown export.
 
-Command-1 through Command-5 switch tabs. Command-period stops app-owned effects. Command-Shift-R retries the connection, Command-Shift-E exports a report, and Command-0 opens the main window.
+Command-1 through Command-6 switch tabs (Players is Command-6). The test length in the header applies to every output test. Command-period stops app-owned effects. Command-Shift-R retries the connection, Command-Shift-E exports a report, and Command-0 opens the main window.
 
 Output tests default to three seconds and accept 0.1–60 seconds. Stop All, device changes, disconnect and quit cancel pending operations before requesting neutral outputs. Quit has an independent three-second completion deadline. Raw history, snapshots and receipt history are bounded; visual input updates are limited to approximately 30 Hz. Audio conversion, raw parsing and diagnostics collection run away from the main actor.
 
+## Screenshots for UI review
+
+`./scripts/lab-screenshots.sh <out-dir> [scenario] [light|dark]` runs the `ScreenshotTour` UI test in simulation and exports one PNG per tab. It needs no controller and sends no output.
+
 ## Artwork
 
-Original Image Gen sources and exact prompts are retained in `Artwork/`. The controller references are transparent raster artwork in the asset catalog, with SwiftUI live overlays aligned to normalized landmarks. They are generated visual references, not Sony photographs, CAD models or proof of hardware behavior.
+Original Image Gen sources and exact prompts are retained in `Artwork/`. The controller references are transparent raster artwork in the asset catalog, with SwiftUI live overlays aligned to normalized landmarks. They are generated visual references, not Sony photographs, CAD models or proof of hardware behavior. The PS button is drawn as a plain round button; the generated logo was painted out.
 
 `TactileLab/TactileLab.icon` is the Icon Composer source. The icon uses an ivory controller, graphite background and small cyan accents; Dark/Mono appearances are handled by Icon Composer. Xcode compiles the layered icon into the app's asset catalog and Finder icon.
 

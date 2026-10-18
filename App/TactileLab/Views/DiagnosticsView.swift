@@ -32,6 +32,10 @@ struct DiagnosticsView: View {
                             // change; macOS otherwise retains its old AX value.
                             .id(session.selectedID)
                     }
+                    GridRow {
+                        Text("Player").foregroundStyle(.secondary)
+                        Text(session.selectedID.flatMap(session.player(of:)).map { "Player \($0)" } ?? "None")
+                    }
                     GridRow { Text("Firmware").foregroundStyle(.secondary); Text(session.diagnostics.firmware.map { "\($0.updateVersionString) · firmware \(String($0.firmwareVersion, radix: 16)) · hardware \(String($0.hardwareVersion, radix: 16))" } ?? "Not available") }
                     GridRow { Text("GameController").foregroundStyle(.secondary); Text(session.diagnostics.gameController) }
                     GridRow { Text("Calibration").foregroundStyle(.secondary); Text(session.diagnostics.calibration) }
@@ -82,7 +86,10 @@ struct DiagnosticsView: View {
                         }.frame(minHeight: 70, maxHeight: 220)
                     }.padding(8)
                 }
-            }.padding(20)
+            }
+            .padding(24)
+            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)
         }.onChange(of: session.selectedID) { _, _ in
             frozen = nil
             before = 0

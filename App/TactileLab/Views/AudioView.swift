@@ -30,7 +30,6 @@ struct AudioView: View {
             Section {
                 Label("Experimental audio over Bluetooth", systemImage: "flask").font(.headline)
                 Text("Routing, speaker framing, and microphone uplink behavior require physical verification. Packet transmission and decoder output do not establish that sound was heard or recorded from the controller.").font(.callout).foregroundStyle(.secondary)
-                DurationControl(session: session)
             }
             Section("Routing and volume") {
                 Picker("Output route", selection: $path) {

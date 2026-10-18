@@ -14,9 +14,27 @@ final class LiveReadings {
     func clear() { input = nil; imu = nil; rate = 0; reportCount = 0; raw = [] }
 }
 
+/// Per-controller readings for the Players tab, kept apart from the session so
+/// 15 Hz updates only redraw the player cards.
+@MainActor @Observable
+final class PlayerBoard {
+    var readings: [String: PlayerReading] = [:]
+    /// Controllers currently flashing their "identify" highlight.
+    var identifying: Set<String> = []
+    func clear() { readings = [:]; identifying = [] }
+}
+
 @MainActor @Observable
 final class LabSession {
     let readings = LiveReadings()
+    let board = PlayerBoard()
+    /// Player numbers for local multiplayer / split screen.
+    private(set) var slots = PlayerSlots(capacity: 4)
+    /// Show each player's number and colour on the controllers. Off by default:
+    /// the lab never drives outputs the user did not ask for.
+    private(set) var playerLights = false
+    private var assigner: PlayerAssigner?
+    private var boardTasks: [String: Task<Void, Never>] = [:]
     var tab: LabTab = .input
     private(set) var devices: [LabDevice] = []
     private(set) var selectedID: String?
@@ -98,15 +116,25 @@ final class LabSession {
         for address in addresses.values { bridge?.hidDeviceDisconnected(address) }
         addresses = [:]; controllers = [:]; devices = []; selectedID = nil
         readings.clear(); diagnostics = LabDiagnostics(); candidates = []; snapshots = []
+        stopBoard()
+        slots = PlayerSlots(capacity: slots.capacity)
         refreshPermissions()
         transitioning = false
         if simulated {
             if scenario == "denied" { status = "Simulated Input Monitoring denial"; return }
             if scenario == "no-device" { status = "Simulated: no Bluetooth controllers"; return }
             devices = [LabDevice(id: "simulated-edge", name: "Simulated DualSense Edge", model: "DualSense Edge", transport: "bluetooth", connected: true, simulated: true)]
-            if scenario == "multiple" || scenario == "stale" {
+            if scenario == "multiple" || scenario == "stale" || scenario == "split" {
                 devices.append(LabDevice(id: "simulated-dualsense", name: "Simulated DualSense", model: "DualSense", transport: "bluetooth", connected: true, simulated: true))
             }
+            if scenario == "split" {
+                // Four players: the fourth has disconnected and its seat is held.
+                devices.append(LabDevice(id: "simulated-dualsense-3", name: "Simulated DualSense", model: "DualSense", transport: "bluetooth", connected: true, simulated: true))
+                devices.append(LabDevice(id: "simulated-dualsense-4", name: "Simulated DualSense", model: "DualSense", transport: "bluetooth", connected: false, simulated: true))
+            }
+            for device in devices { _ = slots.connect(device.id) }
+            for device in devices where !device.connected { _ = slots.disconnect(device.id) }
+            startSimulatedBoard(epoch: epoch)
             select(devices[0].id)
             return
         }
@@ -119,6 +147,10 @@ final class LabSession {
         options.restoreOutputOnReconnect = false
         let manager = ControllerManager(options: options)
         self.manager = manager
+        var playerOptions = PlayerOptions()
+        playerOptions.capacity = slots.capacity
+        playerOptions.applyLights = playerLights
+        assigner = PlayerAssigner(options: playerOptions)
         status = "Looking for a Bluetooth DualSense…"
         eventTask = Task { [weak self] in
             for await event in manager.events() {
@@ -136,6 +168,8 @@ final class LabSession {
                                    transport: controller.transport.rawValue, connected: true, simulated: false)
             if let index = devices.firstIndex(where: { $0.id == controller.id }) { devices[index] = device }
             else { devices.append(device) }
+            if let assigner { assigner.handle(event); slots = assigner.slots }
+            startBoard(for: controller, epoch: epoch)
             if let address = await controller.address {
                 guard managerGeneration == epoch else { return }
                 addresses[controller.id] = address
@@ -144,6 +178,8 @@ final class LabSession {
             if selectedID == nil || selectedID == controller.id { select(controller.id) }
         case .disconnected(let controller):
             if let index = devices.firstIndex(where: { $0.id == controller.id }) { devices[index].connected = false }
+            if let assigner { assigner.handle(event); slots = assigner.slots }
+            boardTasks.removeValue(forKey: controller.id)?.cancel()
             if let address = addresses.removeValue(forKey: controller.id) { bridge?.hidDeviceDisconnected(address) }
             if selectedID == controller.id { select(controller.id); status = "Disconnected. Waiting for the selected controller." }
         case .failed(let info, let error):
@@ -325,6 +361,7 @@ final class LabSession {
     }
 
     func shutdown() async {
+        stopBoard()
         managerGeneration &+= 1; selectionGeneration &+= 1
         eventTask?.cancel(); selectionTask?.cancel(); inputTask?.cancel(); diagnosticsTask?.cancel()
         await stopAll()
@@ -393,5 +430,102 @@ final class LabSession {
     func showError(_ error: any Error) { errorMessage = Self.describe(error) }
     private static func describe(_ error: any Error) -> String {
         (error as? any LocalizedError)?.errorDescription ?? String(describing: error)
+    }
+}
+
+// MARK: - Players (local multiplayer / split screen)
+
+extension LabSession {
+    func player(of id: String) -> Int? { slots.player(of: id) }
+    func device(forPlayer player: Int) -> LabDevice? { slots.id(of: player).flatMap { id in devices.first { $0.id == id } } }
+    func playerColor(_ player: Int) -> LightbarColor { LightbarColor.player(player) }
+
+    /// Moves a controller to another player slot, swapping with its occupant.
+    func assignPlayer(_ id: String, to player: Int) {
+        if simulated {
+            _ = slots.assign(id, to: player, connected: devices.first { $0.id == id }?.connected ?? false)
+        } else if let assigner, let controller = controllers[id] {
+            assigner.assign(controller, to: player)
+            slots = assigner.slots
+        }
+        status = "Moved \(devices.first { $0.id == id }?.displayName ?? id) to player \(player)"
+    }
+
+    /// Frees a held seat (for example a player who left the session).
+    func releasePlayer(_ player: Int) {
+        if simulated { _ = slots.release(player: player) }
+        else if let assigner { assigner.release(player: player); slots = assigner.slots }
+    }
+
+    func setPlayerLights(_ enabled: Bool) {
+        playerLights = enabled
+        assigner?.update { $0.applyLights = enabled }
+        status = enabled
+            ? (simulated ? "Simulated: player lights would be shown on each controller" : "Showing player numbers and colours on the controllers")
+            : "Player lights off; controllers keep their current lights"
+    }
+
+    /// A short rumble on one controller, so a person can tell which is which.
+    func identify(_ id: String) {
+        board.identifying.insert(id)
+        let controller = simulated ? nil : controllers[id]
+        Task {
+            if let controller { try? await controller.setRumble(Rumble(left: 150, right: 150)) }
+            try? await Task.sleep(for: .milliseconds(350))
+            if let controller { try? await controller.setRumble(.off) }
+            board.identifying.remove(id)
+        }
+    }
+
+    /// Opens a controller in the single-controller tabs.
+    func inspect(_ id: String) {
+        select(id)
+        tab = .input
+    }
+
+    fileprivate func startBoard(for controller: Controller, epoch: UInt64) {
+        boardTasks[controller.id]?.cancel()
+        let id = controller.id
+        boardTasks[id] = Task { [weak self] in
+            var last = ContinuousClock.now
+            var count = 0
+            var rateStart = ContinuousClock.now
+            var rate = 0.0
+            for await event in await controller.inputEvents() {
+                guard !Task.isCancelled else { return }
+                count += 1
+                let now = ContinuousClock.now
+                if now - rateStart >= .seconds(1) {
+                    rate = Double(count) / (now - rateStart).secondsValue
+                    count = 0; rateStart = now
+                }
+                guard now - last >= .milliseconds(66) else { continue }  // ≈15 Hz is plenty for cards
+                last = now
+                guard let self, self.managerGeneration == epoch else { return }
+                self.board.readings[id] = PlayerReading(event.state, rate: rate)
+            }
+        }
+    }
+
+    fileprivate func startSimulatedBoard(epoch: UInt64) {
+        boardTasks["simulated"]?.cancel()
+        boardTasks["simulated"] = Task { [weak self] in
+            var tick: UInt64 = 0
+            while !Task.isCancelled {
+                guard let self, self.managerGeneration == epoch, self.simulated else { return }
+                tick &+= 2
+                for (index, device) in self.devices.enumerated() where device.connected {
+                    let snap = Simulation.snapshot(tick: tick &+ UInt64(index * 47), edge: device.id == "simulated-edge")
+                    if let input = snap.input { self.board.readings[device.id] = PlayerReading(input, rate: snap.rate) }
+                }
+                try? await Task.sleep(for: .milliseconds(66))
+            }
+        }
+    }
+
+    fileprivate func stopBoard() {
+        for task in boardTasks.values { task.cancel() }
+        boardTasks = [:]
+        board.clear()
     }
 }

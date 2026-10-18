@@ -116,7 +116,7 @@ final class LabUITests: XCTestCase {
         app.popUpButtons["selectedController"].click()
         // Native popup rows share the menuAction: AX identifier. Click the
         // queried row's center so XCTest cannot re-resolve to a different row.
-        let rowFrame = app.menuItems["Simulated DualSense · ualsense"].frame
+        let rowFrame = app.menuItems["Simulated DualSense"].frame
         let window = app.windows.firstMatch
         let windowFrame = window.frame
         window.coordinate(withNormalizedOffset: .zero)
@@ -127,6 +127,22 @@ final class LabUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause Display"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Resume Display"].exists)
         XCTAssertTrue(app.staticTexts["No active operation"].exists)
+    }
+
+    func testPlayersTabShowsSeatsAndChipsSelect() {
+        launch("split")
+        app.typeKey("6", modifierFlags: .command)
+        XCTAssertTrue(app.descendants(matching: .any)["playersView"].firstMatch.waitForExistence(timeout: 5))
+        for player in 1...4 {
+            XCTAssertTrue(app.descendants(matching: .any)["playerCard\(player)"].firstMatch.exists, "seat \(player)")
+        }
+        XCTAssertTrue(app.staticTexts["Disconnected — seat held"].exists)
+        app.buttons["playerChip2"].click()
+        app.typeKey("4", modifierFlags: .command)
+        let identity = app.descendants(matching: .any)["diagnosticIdentity"].firstMatch
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "simulated-dualsense"), object: identity)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot()); shot.name = "Players"; shot.lifetime = .keepAlways; add(shot)
     }
 
     func testAboutIcon() {

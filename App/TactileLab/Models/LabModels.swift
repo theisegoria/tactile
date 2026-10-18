@@ -2,10 +2,12 @@ import Foundation
 import Tactile
 
 enum LabTab: String, CaseIterable, Identifiable {
-    case input = "Input", effects = "Effects", audio = "Audio", diagnostics = "Diagnostics", tests = "Tests"
+    case input = "Input", effects = "Effects", audio = "Audio", diagnostics = "Diagnostics", tests = "Tests", players = "Players"
     var id: String { rawValue }
     var symbol: String {
         switch self {
+        case .players: "person.2"
+
         case .input: "gamecontroller"
         case .effects: "waveform.path"
         case .audio: "speaker.wave.2"
@@ -22,6 +24,36 @@ struct LabDevice: Identifiable, Sendable, Equatable, Codable {
     var transport: String
     var connected: Bool
     var simulated: Bool
+
+    /// A short, human-friendly tail of the identity: the last two bytes of a
+    /// Bluetooth address ("93:A3"), or nothing for simulated controllers.
+    var shortID: String? {
+        guard !simulated else { return nil }
+        let parts = id.split(separator: ":")
+        if parts.count == 6 { return parts.suffix(2).joined(separator: ":") }
+        return String(id.suffix(5))
+    }
+
+    /// Picker/chip label: "DualSense Edge · 93:A3".
+    var displayName: String { shortID.map { "\(name) · \($0)" } ?? name }
+}
+
+/// Throttled per-controller readings for the Players overview (every
+/// connected controller, not only the selected one).
+struct PlayerReading: Sendable, Equatable {
+    var buttons: Buttons = []
+    var leftStick = SIMD2<UInt8>(128, 128)
+    var rightStick = SIMD2<UInt8>(128, 128)
+    var l2: UInt8 = 0
+    var r2: UInt8 = 0
+    var battery: BatteryStatus?
+    var rate: Double = 0
+
+    init() {}
+    init(_ s: InputState, rate: Double) {
+        buttons = s.buttons; leftStick = s.leftStick; rightStick = s.rightStick
+        l2 = s.l2; r2 = s.r2; battery = s.battery; self.rate = rate
+    }
 }
 
 struct RawReportRow: Identifiable, Sendable, Codable {

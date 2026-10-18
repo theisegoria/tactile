@@ -21,11 +21,10 @@ struct EffectsView: View {
 
     var body: some View {
         Form {
-            Section { DurationControl(session: session) }
             Section("Lightbar and LEDs") {
                 HStack {
                     ColorPicker("Lightbar", selection: $light, supportsOpacity: false)
-                    Picker("Player", selection: $player) { Text("Off").tag(0); ForEach(1...5, id: \.self) { Text("\($0)").tag($0) } }.frame(width: 150)
+                    Picker("Player LEDs", selection: $player) { Text("Off").tag(0); ForEach(1...5, id: \.self) { Text("\($0)").tag($0) } }.frame(width: 180).help("Pattern on the five player LEDs (1–5)")
                     Picker("Brightness", selection: $brightness) { Text("High").tag(LEDBrightness.high); Text("Medium").tag(LEDBrightness.medium); Text("Low").tag(LEDBrightness.low) }.frame(width: 190)
                 }
                 HStack {
