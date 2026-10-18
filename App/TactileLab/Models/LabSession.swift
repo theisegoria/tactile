@@ -20,7 +20,7 @@ final class LabSession {
     var tab: LabTab = .input
     private(set) var devices: [LabDevice] = []
     private(set) var selectedID: String?
-    private(set) var permission = InputMonitoringPermission.notDetermined
+    private(set) var permission: InputMonitoringPermission.Status = .notDetermined
     private(set) var microphonePermission = AVAuthorizationStatus.notDetermined
     private(set) var status = "Ready to connect"
     private(set) var activeOperation: String?

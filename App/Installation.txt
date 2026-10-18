@@ -1,0 +1,29 @@
+TACTILE LAB — DEVELOPMENT PREVIEW
+
+Requires an Apple silicon Mac running macOS 27.0 or later.
+
+DMG: open the disk image, drag Tactile Lab into Applications, then eject it.
+ZIP: extract it and move Tactile Lab into Applications.
+
+Pair your DualSense or DualSense Edge in System Settings > Bluetooth.
+Open Tactile Lab, use Request Access for Input Monitoring, and select your
+Bluetooth controller. Retry after changing permission if necessary.
+Microphone access is requested only for host-microphone-driven haptics.
+
+No effect starts on connection. Choose a test and start it explicitly.
+The default test duration is three seconds. Stop All cancels app-owned work
+and requests neutral outputs. Quitting performs bounded cleanup.
+
+The Input tab shows a generated visual reference with live input overlays.
+Simulation is visibly labeled and does not send output to a controller.
+Save physical Pass, Fail, Skipped or Unverified observations under Tests.
+Export creates versioned JSON and a readable Markdown summary. WAV recordings
+are separate files. Diagnostics stay local; there are no analytics or updater.
+
+Bluetooth hardware acceptance is deferred. Rumble, adaptive triggers, haptics,
+speaker and microphone behavior must not be regarded as physically verified
+by the software tests or by successful HID transmission. Speaker and controller
+microphone features are experimental. Start with short, low-intensity tests.
+
+Tactile Lab is an independent utility, not affiliated with or endorsed by Sony.
+DualSense and PlayStation are trademarks of their respective owners.

@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @MainActor
@@ -7,8 +8,13 @@ final class LabUITests: XCTestCase {
     override func tearDown() { app.terminate() }
 
     private func launch(_ scenario: String = "connected", options: [String] = []) {
-        app.launchArguments = ["--simulate", "--scenario", scenario, "-ApplePersistenceIgnoreState", "YES"] + options
+        app.launchArguments = ["--simulate", "--scenario", scenario] + options
         app.launch()
+        // XCTest starts the process without the normal macOS reopen event.
+        // Deliver the same event as Finder/Dock so the single Window scene opens.
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.tactile.lab.testing") {
+            NSWorkspace.shared.openApplication(at: url, configuration: .init())
+        }
         app.activate()
         app.typeKey("0", modifierFlags: .command)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
@@ -25,7 +31,7 @@ final class LabUITests: XCTestCase {
         app.buttons["stopAll"].click()
         XCTAssertTrue(app.staticTexts["No active operation"].waitForExistence(timeout: 5))
         for key in ["1", "3", "4", "5"] { app.typeKey(key, modifierFlags: .command); XCTAssertTrue(app.buttons["stopAll"].exists) }
-        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "Guided tests"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot()); screenshot.name = "Guided tests"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
 
     func testDeniedAndNoDeviceScenarios() {
