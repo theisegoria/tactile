@@ -51,7 +51,7 @@ struct LabRootView: View {
                     ForEach(session.devices) { device in
                         Text("\(device.name) · \(device.id.suffix(8))\(device.connected ? "" : " (offline)")").tag(device.id)
                     }
-                }.labelsHidden().frame(minWidth: 260, maxWidth: 360).accessibilityLabel("Selected controller")
+                }.labelsHidden().frame(minWidth: 260, maxWidth: 360).accessibilityLabel("Selected controller").accessibilityIdentifier("selectedController")
                 HStack(spacing: 10) {
                     Label(session.selectedDevice?.connected == true ? "Bluetooth connected" : "Bluetooth idle", systemImage: "antenna.radiowaves.left.and.right")
                     if session.simulated { Text("SIMULATED").fontWeight(.semibold).foregroundStyle(.orange).accessibilityIdentifier("simulationBadge") }

@@ -11,10 +11,15 @@ struct TactileLabApp: App {
         Window("Tactile Lab", id: "lab") {
             LabRootView(session: session)
                 .frame(minWidth: 860, minHeight: 660)
+                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--dark") ? .dark : (ProcessInfo.processInfo.arguments.contains("--light") ? .light : nil))
                 .task { delegate.session = session; await session.start() }
                 .onChange(of: scenePhase) { _, phase in if phase == .active { session.refreshPermissions() } }
         }
-        .defaultSize(width: 1060, height: 790)
+        .keyboardShortcut("0", modifiers: .command)
+        .defaultSize(width: ProcessInfo.processInfo.arguments.contains("--minimum-window") ? 860 : 1060,
+                     height: ProcessInfo.processInfo.arguments.contains("--minimum-window") ? 660 : 790)
+        .defaultLaunchBehavior(.presented)
+        .restorationBehavior(ProcessInfo.processInfo.arguments.contains("--simulate") ? .disabled : .automatic)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .appInfo) {

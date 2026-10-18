@@ -55,6 +55,8 @@ struct OperationReceipt: Identifiable, Sendable, Codable {
     var simulated: Bool
     var transportResult = "In progress"
     var diagnostics: LabDiagnostics?
+    var candidateLayouts: [UplinkCandidate] = []
+    var reportCounts: [UInt8: Int] = [:]
 }
 
 enum ObservationResult: String, CaseIterable, Codable {

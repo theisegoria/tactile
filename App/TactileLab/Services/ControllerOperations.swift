@@ -96,7 +96,7 @@ actor ControllerOperations {
             result = OperationResult(summary: "Haptics request completed. Felt result remains unverified.")
         case .hapticFile(let url, let gain):
             try await c.startHaptics()
-            try await boundedPlayback(duration: duration) {
+            _ = try await boundedPlayback(duration: duration) {
                 try await AudioFileSource.play(url: url, mixer: c.haptics, gain: gain, shouldStop: { Task.isCancelled })
             }
             result = OperationResult(summary: "Audio-to-haptics playback ended. Felt result remains unverified.")
@@ -112,11 +112,11 @@ actor ControllerOperations {
         case .speaker(let url, let framing, let bitRate, let gain, let routing):
             guard framing.isValid else { throw LabError.invalid("Speaker framing has no room for its header, length prefix, payload and CRC.") }
             try await c.setAudio(routing)
-            try await boundedPlayback(duration: duration) {
-                let stats = try await c.playSpeakerAudio(url: url, framing: framing, bitRate: bitRate, gain: gain)
-                return stats.description
+            let stats = try await boundedPlayback(duration: duration) {
+                try await c.playSpeakerAudio(url: url, framing: framing, bitRate: bitRate, gain: gain)
             }
-            result = OperationResult(summary: "Experimental speaker stream ended. Audible result remains unverified.")
+            result = OperationResult(summary: "Experimental speaker stream \(stats.map { $0.description } ?? "reached its time limit; partial packet counts unavailable"). Audible result remains unverified.",
+                                     metrics: stats.map { ["speakerPacketsSent": Double($0.packetsSent), "speakerOversizedPackets": Double($0.packetsDroppedOversize), "speakerSendFailures": Double($0.sendFailures), "speakerMaxLatenessMs": $0.maxLatenessMs] } ?? [:])
         case .scan:
             try await c.setAudio(AudioSettings(micVolume: 64))
             let scan = await c.scanForMicUplink(duration: .seconds(duration))
@@ -130,18 +130,18 @@ actor ControllerOperations {
             result = OperationResult(summary: stats.description, recording: url)
         }
         var measured = result
-        measured.metrics = metricValues(c.hapticsMetrics())
+        measured.metrics.merge(metricValues(c.hapticsMetrics()), uniquingKeysWith: { _, newer in newer })
         return measured
     }
 
     /// These producers explicitly observe cancellation; structured cleanup is
     /// appropriate here. Application termination uses a separate deadline.
-    private static func boundedPlayback<T: Sendable>(duration: Double, body: @escaping @Sendable () async throws -> T) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { _ = try await body() }
-            group.addTask { try await Task.sleep(for: .seconds(duration)) }
-            do { _ = try await group.next() } catch { group.cancelAll(); throw error }
-            group.cancelAll()
+    private static func boundedPlayback<T: Sendable>(duration: Double, body: @escaping @Sendable () async throws -> T) async throws -> T? {
+        try await withThrowingTaskGroup(of: T?.self) { group in
+            group.addTask { try await body() }
+            group.addTask { try await Task.sleep(for: .seconds(duration)); return nil }
+            defer { group.cancelAll() }
+            return try await group.next() ?? nil
         }
     }
 }

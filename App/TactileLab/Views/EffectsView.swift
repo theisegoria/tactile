@@ -94,7 +94,7 @@ struct EffectsView: View {
     private func microphone() {
         let id = session.selectedID
         Task {
-            let permitted = session.simulated || (await AVCaptureDevice.requestAccess(for: .audio))
+            let permitted = session.simulated ? true : await AVCaptureDevice.requestAccess(for: .audio)
             session.refreshPermissions()
             guard permitted else { session.showError(LabError.invalid("Allow Microphone access in System Settings → Privacy & Security → Microphone.")); return }
             guard session.selectedID == id else { return }

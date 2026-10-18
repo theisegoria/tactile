@@ -1,0 +1,787 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0E7B99967073AE1442F543B1 /* InputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE46081E9B123EF593E97744 /* InputView.swift */; };
+		1866FF130EF6314874191DD7 /* TactileLab.icon in Resources */ = {isa = PBXBuildFile; fileRef = FF9882AFBEE07761B289BEF7 /* TactileLab.icon */; };
+		22112CA80CB0BE904B470E1E /* EffectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA2849BB92392E532E514F6 /* EffectsView.swift */; };
+		3A0BC37EF1F8769406D11ED1 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */; };
+		3A0E273650F8EDA48B1BFA87 /* Tactile in Frameworks */ = {isa = PBXBuildFile; productRef = B3FD68FB24F68A9E9CD20B45 /* Tactile */; };
+		408D86799B5F21EB6CC168B8 /* TestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2046C472620EF963F29AE2C /* TestsView.swift */; };
+		42AE9174B69655477E4CE564 /* LabSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2590748E86C9DA795EB077D /* LabSession.swift */; };
+		46DA9DD0A46AA733742BA7E2 /* SessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */; };
+		5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */; };
+		7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24394A429FC00BE2DD62181 /* TriggerEditor.swift */; };
+		77B2041F1FE3AE3893BBD053 /* ControllerDiagram.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */; };
+		926AE7128C758FDAB618C1FD /* LabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D9259E306C4360EE0F4857 /* LabModels.swift */; };
+		A43377246A66646A4C4A7937 /* DiagnosticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */; };
+		AC460B34F074D5D281B93C62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33204A160FAEAE5EEB251769 /* Assets.xcassets */; };
+		BD389F604DF0754A798A5980 /* GuidedCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F9153FF686BB225228C7B5 /* GuidedCheck.swift */; };
+		BDFDF30BED5461E8A939FDBD /* ControllerOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */; };
+		C1D59EB6CE24DB7FB2D1FC5D /* LabUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F469BEFB9C7243E4226CFBFA /* LabUITests.swift */; };
+		C82099B45CEABD80D7953E65 /* AudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503741E72C65CE510C91BE4F /* AudioView.swift */; };
+		D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */; };
+		DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A625665CB92DFD2ED26F036 /* LabRootView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		48124FDC32BE3ED37BEC76E1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC94B5D1489A194EBA539A25 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9DB97BAD2AEAF8A4042F87C1;
+			remoteInfo = TactileLab;
+		};
+		D1D28B452F8E9FE2F5104AB3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC94B5D1489A194EBA539A25 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9DB97BAD2AEAF8A4042F87C1;
+			remoteInfo = TactileLab;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0D220BD136177BEF0FBED642 /* TactileLabTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		33204A160FAEAE5EEB251769 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		503741E72C65CE510C91BE4F /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioView.swift; sourceTree = "<group>"; };
+		69D9259E306C4360EE0F4857 /* LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabModels.swift; sourceTree = "<group>"; };
+		6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMonitor.swift; sourceTree = "<group>"; };
+		77F9153FF686BB225228C7B5 /* GuidedCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidedCheck.swift; sourceTree = "<group>"; };
+		87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TactileLabApp.swift; sourceTree = "<group>"; };
+		89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerOperations.swift; sourceTree = "<group>"; };
+		9A625665CB92DFD2ED26F036 /* LabRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabRootView.swift; sourceTree = "<group>"; };
+		A2046C472620EF963F29AE2C /* TestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestsView.swift; sourceTree = "<group>"; };
+		A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTests.swift; sourceTree = "<group>"; };
+		CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsService.swift; sourceTree = "<group>"; };
+		CFA2849BB92392E532E514F6 /* EffectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectsView.swift; sourceTree = "<group>"; };
+		D24394A429FC00BE2DD62181 /* TriggerEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEditor.swift; sourceTree = "<group>"; };
+		D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		D97BF6B1BCAB08D2FBD5016E /* TactileLabUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1DE8A37C9A2DA44BA70A801 /* DualSense Adaptor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "DualSense Adaptor"; path = .; sourceTree = SOURCE_ROOT; };
+		E2590748E86C9DA795EB077D /* LabSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabSession.swift; sourceTree = "<group>"; };
+		E97B3CB0543655BEABBF367E /* TactileLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TactileLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerDiagram.swift; sourceTree = "<group>"; };
+		F469BEFB9C7243E4226CFBFA /* LabUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabUITests.swift; sourceTree = "<group>"; };
+		FE46081E9B123EF593E97744 /* InputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputView.swift; sourceTree = "<group>"; };
+		FF9882AFBEE07761B289BEF7 /* TactileLab.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = TactileLab.icon; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B96E5004107305430ACFE642 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A0E273650F8EDA48B1BFA87 /* Tactile in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		11F13F1A40BBA33DE16E2240 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				77F9153FF686BB225228C7B5 /* GuidedCheck.swift */,
+				69D9259E306C4360EE0F4857 /* LabModels.swift */,
+				E2590748E86C9DA795EB077D /* LabSession.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		894256ACDA0EDC293CF438FF = {
+			isa = PBXGroup;
+			children = (
+				C460EB4EC323E257E0B02F7D /* App */,
+				D28A4E72E030F1D317FF3F9C /* Packages */,
+				8F8100163EECD0AD5A4B957F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8F8100163EECD0AD5A4B957F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E97B3CB0543655BEABBF367E /* TactileLab.app */,
+				0D220BD136177BEF0FBED642 /* TactileLabTests.xctest */,
+				D97BF6B1BCAB08D2FBD5016E /* TactileLabUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		917D3B32BCA4100CFF7FBC98 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */,
+				CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */,
+				6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		9308090C5C88EDE01F5C2A5B /* TactileLabTests */ = {
+			isa = PBXGroup;
+			children = (
+				A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */,
+			);
+			path = TactileLabTests;
+			sourceTree = "<group>";
+		};
+		C460EB4EC323E257E0B02F7D /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F23B494D9F095EA17FA6B5AD /* TactileLab */,
+				9308090C5C88EDE01F5C2A5B /* TactileLabTests */,
+				E4ACB2BF0716C20651AB100D /* TactileLabUITests */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D28A4E72E030F1D317FF3F9C /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				E1DE8A37C9A2DA44BA70A801 /* DualSense Adaptor */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		E4ACB2BF0716C20651AB100D /* TactileLabUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F469BEFB9C7243E4226CFBFA /* LabUITests.swift */,
+			);
+			path = TactileLabUITests;
+			sourceTree = "<group>";
+		};
+		E81F75B98164F596F996F5CE /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				503741E72C65CE510C91BE4F /* AudioView.swift */,
+				F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */,
+				D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */,
+				CFA2849BB92392E532E514F6 /* EffectsView.swift */,
+				FE46081E9B123EF593E97744 /* InputView.swift */,
+				9A625665CB92DFD2ED26F036 /* LabRootView.swift */,
+				A2046C472620EF963F29AE2C /* TestsView.swift */,
+				D24394A429FC00BE2DD62181 /* TriggerEditor.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F23B494D9F095EA17FA6B5AD /* TactileLab */ = {
+			isa = PBXGroup;
+			children = (
+				33204A160FAEAE5EEB251769 /* Assets.xcassets */,
+				FF9882AFBEE07761B289BEF7 /* TactileLab.icon */,
+				87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */,
+				11F13F1A40BBA33DE16E2240 /* Models */,
+				917D3B32BCA4100CFF7FBC98 /* Services */,
+				E81F75B98164F596F996F5CE /* Views */,
+			);
+			path = TactileLab;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5D57B2394FF71E5992E29F2C /* TactileLabUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 998BED0A28198EB71DEBEC22 /* Build configuration list for PBXNativeTarget "TactileLabUITests" */;
+			buildPhases = (
+				EC05D23C0F2F62D3774339FF /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0FA27295AE45DC69829B91ED /* PBXTargetDependency */,
+			);
+			name = TactileLabUITests;
+			packageProductDependencies = (
+			);
+			productName = TactileLabUITests;
+			productReference = D97BF6B1BCAB08D2FBD5016E /* TactileLabUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		9DB97BAD2AEAF8A4042F87C1 /* TactileLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE9BFB68DD0EF6D7ED87CD69 /* Build configuration list for PBXNativeTarget "TactileLab" */;
+			buildPhases = (
+				3BA7390178BDCBB13507E71D /* Sources */,
+				1A1072461390D6FB547DDD70 /* Resources */,
+				B96E5004107305430ACFE642 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TactileLab;
+			packageProductDependencies = (
+				B3FD68FB24F68A9E9CD20B45 /* Tactile */,
+			);
+			productName = TactileLab;
+			productReference = E97B3CB0543655BEABBF367E /* TactileLab.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A24DFD6F2ECECE8D1B3F7462 /* TactileLabTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CA63A25CD4E66AE42259C683 /* Build configuration list for PBXNativeTarget "TactileLabTests" */;
+			buildPhases = (
+				0C8633CB7F9BE6F9C8BB7202 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A444861C14AE608AA69CB2E4 /* PBXTargetDependency */,
+			);
+			name = TactileLabTests;
+			packageProductDependencies = (
+			);
+			productName = TactileLabTests;
+			productReference = 0D220BD136177BEF0FBED642 /* TactileLabTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BC94B5D1489A194EBA539A25 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2710;
+				TargetAttributes = {
+					5D57B2394FF71E5992E29F2C = {
+						DevelopmentTeam = Q73Q75XA2B;
+						ProvisioningStyle = Manual;
+						TestTargetID = 9DB97BAD2AEAF8A4042F87C1;
+					};
+					9DB97BAD2AEAF8A4042F87C1 = {
+						DevelopmentTeam = Q73Q75XA2B;
+						ProvisioningStyle = Manual;
+					};
+					A24DFD6F2ECECE8D1B3F7462 = {
+						DevelopmentTeam = Q73Q75XA2B;
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = C19FBD679937DAAAB35D176F /* Build configuration list for PBXProject "TactileLab" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 894256ACDA0EDC293CF438FF;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2D33CBF7F553531932F5E8AB /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9DB97BAD2AEAF8A4042F87C1 /* TactileLab */,
+				A24DFD6F2ECECE8D1B3F7462 /* TactileLabTests */,
+				5D57B2394FF71E5992E29F2C /* TactileLabUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A1072461390D6FB547DDD70 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC460B34F074D5D281B93C62 /* Assets.xcassets in Resources */,
+				1866FF130EF6314874191DD7 /* TactileLab.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0C8633CB7F9BE6F9C8BB7202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46DA9DD0A46AA733742BA7E2 /* SessionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3BA7390178BDCBB13507E71D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C82099B45CEABD80D7953E65 /* AudioView.swift in Sources */,
+				77B2041F1FE3AE3893BBD053 /* ControllerDiagram.swift in Sources */,
+				BDFDF30BED5461E8A939FDBD /* ControllerOperations.swift in Sources */,
+				A43377246A66646A4C4A7937 /* DiagnosticsService.swift in Sources */,
+				3A0BC37EF1F8769406D11ED1 /* DiagnosticsView.swift in Sources */,
+				22112CA80CB0BE904B470E1E /* EffectsView.swift in Sources */,
+				BD389F604DF0754A798A5980 /* GuidedCheck.swift in Sources */,
+				0E7B99967073AE1442F543B1 /* InputView.swift in Sources */,
+				926AE7128C758FDAB618C1FD /* LabModels.swift in Sources */,
+				DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */,
+				42AE9174B69655477E4CE564 /* LabSession.swift in Sources */,
+				D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */,
+				5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */,
+				408D86799B5F21EB6CC168B8 /* TestsView.swift in Sources */,
+				7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC05D23C0F2F62D3774339FF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1D59EB6CE24DB7FB2D1FC5D /* LabUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0FA27295AE45DC69829B91ED /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9DB97BAD2AEAF8A4042F87C1 /* TactileLab */;
+			targetProxy = D1D28B452F8E9FE2F5104AB3 /* PBXContainerItemProxy */;
+		};
+		A444861C14AE608AA69CB2E4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9DB97BAD2AEAF8A4042F87C1 /* TactileLab */;
+			targetProxy = 48124FDC32BE3ED37BEC76E1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		11133B340F35EE48B7F86376 /* UITesting */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = TactileLab;
+			};
+			name = UITesting;
+		};
+		31A986560A247320F9ACAD60 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = TactileLab;
+			};
+			name = Release;
+		};
+		3998178D783C3084DDEEFECF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tactile Lab.app/Contents/MacOS/Tactile Lab";
+			};
+			name = Debug;
+		};
+		41F981CC9AEDC61AC74F6DDB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = Q73Q75XA2B;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		59DBC13DBB2BA733D1259417 /* UITesting */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tactile Lab.app/Contents/MacOS/Tactile Lab";
+			};
+			name = UITesting;
+		};
+		748C4BA1F484E75D4FA26C72 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tactile Lab.app/Contents/MacOS/Tactile Lab";
+			};
+			name = Release;
+		};
+		8E7ECE32E604C34F2BA1A4E6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
+				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab;
+				PRODUCT_NAME = "Tactile Lab";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A97622038328A903E3FA6B3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = TactileLab;
+			};
+			name = Debug;
+		};
+		B4124F763588C4401A865DA0 /* UITesting */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
+				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.testing;
+				PRODUCT_NAME = "Tactile Lab";
+				SDKROOT = macosx;
+			};
+			name = UITesting;
+		};
+		F44F9F6395741449AC28B6D0 /* UITesting */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = Q73Q75XA2B;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = UITesting;
+		};
+		FAF3ED145674CCD0BF995A3F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = Q73Q75XA2B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		FCF6FA9B09F39AEF1BD16A33 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
+				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab;
+				PRODUCT_NAME = "Tactile Lab";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		998BED0A28198EB71DEBEC22 /* Build configuration list for PBXNativeTarget "TactileLabUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A97622038328A903E3FA6B3A /* Debug */,
+				31A986560A247320F9ACAD60 /* Release */,
+				11133B340F35EE48B7F86376 /* UITesting */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C19FBD679937DAAAB35D176F /* Build configuration list for PBXProject "TactileLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41F981CC9AEDC61AC74F6DDB /* Debug */,
+				FAF3ED145674CCD0BF995A3F /* Release */,
+				F44F9F6395741449AC28B6D0 /* UITesting */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CA63A25CD4E66AE42259C683 /* Build configuration list for PBXNativeTarget "TactileLabTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3998178D783C3084DDEEFECF /* Debug */,
+				748C4BA1F484E75D4FA26C72 /* Release */,
+				59DBC13DBB2BA733D1259417 /* UITesting */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CE9BFB68DD0EF6D7ED87CD69 /* Build configuration list for PBXNativeTarget "TactileLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FCF6FA9B09F39AEF1BD16A33 /* Debug */,
+				8E7ECE32E604C34F2BA1A4E6 /* Release */,
+				B4124F763588C4401A865DA0 /* UITesting */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2D33CBF7F553531932F5E8AB /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B3FD68FB24F68A9E9CD20B45 /* Tactile */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Tactile;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BC94B5D1489A194EBA539A25 /* Project object */;
+}

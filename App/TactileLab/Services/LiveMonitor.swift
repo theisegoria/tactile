@@ -16,6 +16,8 @@ actor LiveMonitor {
     private var raw: [RawReportRow] = []
     private var reports: UInt64 = 0
     private var rawSequence: UInt64 = 0
+    private var displayedRaw: [RawReportRow] = []
+    private var rawPublishTime = ContinuousClock.now
     private var rate = 0.0
     private var rateCount: UInt64 = 0
     private var rateTime = ContinuousClock.now
@@ -34,16 +36,21 @@ actor LiveMonitor {
             rateCount = reports; rateTime = .now
             metrics = metricValues(controller.hapticsMetrics())
         }
-        return LiveSnapshot(input: latest, imu: imu, reports: reports, rate: rate, raw: raw, metrics: metrics)
+        if ContinuousClock.now - rawPublishTime >= .milliseconds(500) {
+            displayedRaw = raw
+            rawPublishTime = .now
+        }
+        return LiveSnapshot(input: latest, imu: imu, reports: reports, rate: rate, raw: displayedRaw, metrics: metrics)
     }
 
-    nonisolated static func stream(for controller: Controller) -> AsyncStream<LiveSnapshot> {
+    nonisolated static func stream(for controller: Controller, onInput: @escaping @MainActor @Sendable (InputEvent) -> Void) -> AsyncStream<LiveSnapshot> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let monitor = LiveMonitor()
             let input = Task.detached {
                 for await event in await controller.inputEvents() {
                     guard !Task.isCancelled else { break }
                     await monitor.input(event)
+                    await onInput(event)
                 }
                 continuation.finish()
             }
@@ -67,14 +74,15 @@ actor LiveMonitor {
 }
 
 enum Simulation {
-    static func snapshot(tick: UInt64) -> LiveSnapshot {
+    static func snapshot(tick: UInt64, edge: Bool = true) -> LiveSnapshot {
         let phase = Double(tick) / 30
         var input = InputState(kind: .bluetoothFull)
         input.leftStick = SIMD2(UInt8(128 + 70 * sin(phase)), UInt8(128 + 70 * cos(phase)))
         input.rightStick = SIMD2(128, 128)
         input.l2 = UInt8(120 + 120 * sin(phase / 2))
         input.r2 = UInt8(120 + 120 * cos(phase / 2))
-        input.buttons = tick % 60 < 30 ? [.cross, .paddleLeft, .fnRight] : [.circle, .paddleRight, .fnLeft]
+        input.buttons = tick % 60 < 30 ? [.cross] : [.circle]
+        if edge { input.buttons.formUnion(tick % 60 < 30 ? [.paddleLeft, .fnRight] : [.paddleRight, .fnLeft]) }
         input.battery = BatteryStatus(percent: 85, charging: .discharging)
         input.touchPoints = [TouchPoint(active: true, id: 1, x: UInt16(960 + 500 * sin(phase)), y: 540), .inactive]
         let calibrated = IMUCalibration.defaults.apply(RawIMU(gyro: SIMD3(1024, 0, -512), accel: SIMD3(0, 0, 8192), timestamp: UInt32(truncatingIfNeeded: tick)))

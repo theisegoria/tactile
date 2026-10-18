@@ -12,9 +12,10 @@ mkdir -p "$DIST"
 
 LIBS=()
 for arch in "${ARCHS[@]}"; do
-  # Build products for different archs can share a directory; copy each out.
-  swift build -c release --arch "$arch" --product CTactile >/dev/null
-  cp "$(swift build -c release --arch "$arch" --show-bin-path)/libCTactile.dylib" "$WORK/libCTactile-$arch.dylib"
+  # Keep architecture builds separate, preserving any host build in use.
+  SCRATCH="${TACTILE_BUILD_ROOT:-build/xcframework}/$arch"
+  swift build --scratch-path "$SCRATCH" -c release --arch "$arch" --product CTactile >/dev/null
+  cp "$(swift build --scratch-path "$SCRATCH" -c release --arch "$arch" --show-bin-path)/libCTactile.dylib" "$WORK/libCTactile-$arch.dylib"
   LIBS+=("$WORK/libCTactile-$arch.dylib")
 done
 

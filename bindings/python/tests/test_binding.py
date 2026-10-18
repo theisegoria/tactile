@@ -81,6 +81,13 @@ class BindingTests(unittest.TestCase):
             t.TriggerEffect.weapon(1, 6, 8)
         self.assertEqual(cm.exception.code, t.ERR_INVALID_ARGUMENT)
 
+    def test_player_led_instant_bit_reaches_native_validation(self):
+        # Bit 5 is a documented instant-transition option, not an LED index.
+        with self.assertRaises(t.TactileError):
+            t.Controller(0).set_player_leds(0x3f)
+        with self.assertRaises(ValueError):
+            t.Controller(0).set_player_leds(0x40)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,15 @@
 name: TactileLab
+configs:
+  Debug: debug
+  UITesting: debug
+  Release: release
 options:
   bundleIdPrefix: dev.tactile
   deploymentTarget:
     macOS: '27.0'
   xcodeVersion: '27.1'
   createIntermediateGroups: true
+  postGenCommand: python3 scripts/configure-icon-project.py
 packages:
   Tactile:
     path: .
@@ -20,6 +25,10 @@ settings:
   configs:
     Debug:
       CODE_SIGN_IDENTITY: '-'
+      ENABLE_HARDENED_RUNTIME: NO
+    UITesting:
+      CODE_SIGN_IDENTITY: '-'
+      ENABLE_HARDENED_RUNTIME: NO
     Release:
       CODE_SIGN_IDENTITY: Developer ID Application
       SWIFT_COMPILATION_MODE: wholemodule
@@ -27,7 +36,12 @@ targets:
   TactileLab:
     type: application
     platform: macOS
-    sources: [App/TactileLab]
+    sources:
+      - path: App/TactileLab
+        excludes: [TactileLab.icon]
+      - path: App/TactileLab/TactileLab.icon
+        type: file
+        buildPhase: resources
     dependencies:
       - package: Tactile
         product: Tactile
@@ -35,10 +49,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab
         PRODUCT_NAME: Tactile Lab
+        ASSETCATALOG_COMPILER_APPICON_NAME: TactileLab
         ENABLE_APP_SANDBOX: NO
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: 1.0.0
         CURRENT_PROJECT_VERSION: 1
+      configs:
+        UITesting:
+          PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab.testing
     info:
       path: App/Support/Info.plist
       properties:
@@ -64,6 +82,8 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Tactile Lab.app/Contents/MacOS/Tactile Lab
+        BUNDLE_LOADER: $(TEST_HOST)
   TactileLabUITests:
     type: bundle.ui-testing
     platform: macOS
@@ -82,7 +102,9 @@ schemes:
     run:
       config: Debug
     test:
-      config: Debug
+      config: UITesting
+      environmentVariables:
+        TACTILE_SIMULATED: '1'
       targets: [TactileLabTests, TactileLabUITests]
     archive:
       config: Release
@@ -92,6 +114,9 @@ schemes:
         TactileLab: all
         TactileLabTests: [test]
     test:
+      config: UITesting
+      environmentVariables:
+        TACTILE_SIMULATED: '1'
       targets: [TactileLabTests]
   TactileLabUITests:
     build:
@@ -99,4 +124,7 @@ schemes:
         TactileLab: all
         TactileLabUITests: [test]
     test:
+      config: UITesting
+      environmentVariables:
+        TACTILE_SIMULATED: '1'
       targets: [TactileLabUITests]

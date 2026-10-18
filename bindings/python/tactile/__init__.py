@@ -367,7 +367,7 @@ class Controller:
         _check(_lib().tactile_controller_set_lightbar(self._h, *[_integer(x, 0, 255, "color") for x in (r, g, b)]))
 
     def set_player_leds(self, mask: int) -> None:
-        _check(_lib().tactile_controller_set_player_leds(self._h, _integer(mask, 0, 31, "mask")))
+        _check(_lib().tactile_controller_set_player_leds(self._h, _integer(mask, 0, 63, "mask")))
 
     def set_mute_led(self, mode: int) -> None:
         _check(_lib().tactile_controller_set_mute_led(self._h, mode))
