@@ -21,6 +21,8 @@ __all__ = [
 ]
 
 ABI_VERSION_MAJOR = 0
+# Players (split screen) need ABI 0.2 or later.
+ABI_VERSION_MINOR_PLAYERS = 2
 
 # ---- result codes and enums (tactile.h) ------------------------------------
 
@@ -33,7 +35,7 @@ TRIGGER_LEFT, TRIGGER_RIGHT = 0, 1
 MUTE_LED_OFF, MUTE_LED_ON, MUTE_LED_PULSE = 0, 1, 2
 HAPTIC_LEFT, HAPTIC_RIGHT, HAPTIC_BOTH = 0, 1, 2
 HAPTIC_CLICK, HAPTIC_DETENT, HAPTIC_TEXTURE, HAPTIC_IMPACT = 0, 1, 2, 3
-EVENT_CONNECTED, EVENT_RECONNECTED, EVENT_DISCONNECTED = 0, 1, 2
+EVENT_CONNECTED, EVENT_RECONNECTED, EVENT_DISCONNECTED, EVENT_PLAYER_CHANGED = 0, 1, 2, 3
 PERMISSION_GRANTED, PERMISSION_DENIED, PERMISSION_NOT_DETERMINED = 0, 1, 2
 
 
@@ -221,6 +223,11 @@ def _annotate(lib: C.CDLL) -> None:
         "tactile_context_controller_count": (i32, [vp]),
         "tactile_context_get_controller": (i32, [vp, i32, P(vp)]),
         "tactile_context_wait_for_controller": (i32, [vp, i32, P(vp)]),
+        "tactile_context_set_player_options": (i32, [vp, i32, i32]),
+        "tactile_context_get_player": (i32, [vp, i32, P(vp)]),
+        "tactile_context_assign_player": (i32, [vp, vp, i32]),
+        "tactile_context_release_player": (i32, [vp, i32]),
+        "tactile_controller_get_player": (i32, [vp]),
         "tactile_controller_retain": (None, [vp]),
         "tactile_controller_release": (None, [vp]),
         "tactile_controller_get_info": (i32, [vp, P(_ControllerInfo)]),
@@ -249,6 +256,8 @@ def _annotate(lib: C.CDLL) -> None:
         "tactile_haptics_get_metrics": (i32, [vp, P(_HapticsMetrics)]),
     }
     for name, (res, args) in sig.items():
+        if not hasattr(lib, name):  # older library: player calls appear in ABI 0.2
+            continue
         fn = getattr(lib, name)
         fn.restype = res
         fn.argtypes = args
@@ -349,6 +358,11 @@ class Controller:
             self.close()
         except Exception:
             pass
+
+    @property
+    def player(self) -> int:
+        """Player number (1-8), or 0 when this controller has none."""
+        return _check(_lib().tactile_controller_get_player(self._h))
 
     def info(self) -> ControllerInfo:
         i = _ControllerInfo(); i.struct_size = C.sizeof(i)
@@ -518,3 +532,30 @@ class Context:
         h = C.c_void_p()
         _check(_lib().tactile_context_wait_for_controller(self._h, int(timeout * 1000), C.byref(h)))
         return Controller(h.value, self)
+
+    # ---- Players: local multiplayer / split screen (ABI 0.2) ----
+
+    def set_player_options(self, max_players: int = 0, apply_lights: Optional[bool] = None) -> None:
+        """max_players 1-8 (0 keeps it); apply_lights shows player number and colour on the controller."""
+        lights = -1 if apply_lights is None else int(bool(apply_lights))
+        _check(_lib().tactile_context_set_player_options(self._h, max_players, lights))
+
+    def player(self, n: int) -> Optional[Controller]:
+        """The controller holding player n's slot (possibly disconnected), or None."""
+        h = C.c_void_p()
+        r = _lib().tactile_context_get_player(self._h, n, C.byref(h))
+        if r == ERR_NOT_FOUND:
+            return None
+        _check(r)
+        return Controller(h.value, self)
+
+    def players(self, max_players: int = 8) -> dict:
+        """{player number: Controller} for every occupied slot."""
+        return {n: c for n in range(1, max_players + 1) if (c := self.player(n)) is not None}
+
+    def assign_player(self, controller: Controller, n: int) -> None:
+        """Moves controller to player n, swapping with the current occupant."""
+        _check(_lib().tactile_context_assign_player(self._h, controller._h, n))
+
+    def release_player(self, n: int) -> None:
+        _check(_lib().tactile_context_release_player(self._h, n))

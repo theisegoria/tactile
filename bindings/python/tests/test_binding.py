@@ -89,5 +89,14 @@ class BindingTests(unittest.TestCase):
             t.Controller(0).set_player_leds(0x40)
 
 
+class PlayerBindingTests(unittest.TestCase):
+    def test_player_calls_present_and_reject_null(self):
+        lib = t.load_library()
+        self.assertGreaterEqual(lib.tactile_abi_version() & 0xFFFF, t.ABI_VERSION_MINOR_PLAYERS)
+        self.assertEqual(lib.tactile_controller_get_player(None), t.ERR_INVALID_ARGUMENT)
+        self.assertEqual(lib.tactile_context_release_player(None, 1), t.ERR_INVALID_ARGUMENT)
+        self.assertEqual(t.EVENT_PLAYER_CHANGED, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

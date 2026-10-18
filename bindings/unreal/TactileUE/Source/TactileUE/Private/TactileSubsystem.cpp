@@ -46,12 +46,18 @@ void UTactileSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     tactile_options Options{};
     Options.struct_size = sizeof(Options);
     Options.mode = TACTILE_MODE_SHARED;
-    if (tactile_context_create(&Options, &Context) != TACTILE_OK) { Context = nullptr; }
+    if (tactile_context_create(&Options, &Context) != TACTILE_OK) { Context = nullptr; return; }
+    if ((tactile_abi_version() & 0xFFFF) >= 2) { tactile_context_set_player_options(Context, MaxPlayers, 1); }
 }
 
 void UTactileSubsystem::Deinitialize()
 {
     if (Pad) { tactile_controller_release(Pad); Pad = nullptr; }
+    for (FPlayerSlotState& P : Players)
+    {
+        if (P.Pad) { tactile_controller_release(P.Pad); }
+        P = FPlayerSlotState();
+    }
     if (Context) { tactile_context_destroy(Context); Context = nullptr; }  // restores neutral output
     Input = FTactileInputState();
     PreviousButtons = PressedEdges = 0;
@@ -61,6 +67,7 @@ void UTactileSubsystem::Deinitialize()
 
 void UTactileSubsystem::Tick(float)
 {
+    TickPlayers();
     bool bNow = false;
     tactile_input_state S{};
     S.struct_size = sizeof(S);
@@ -150,3 +157,90 @@ FTactileTriggerEffect UTactileSubsystem::TriggerSlopeFeedback(int32 SP, int32 EP
 FTactileTriggerEffect UTactileSubsystem::TriggerBow(int32 A, int32 B, int32 S, int32 N) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_bow(A, B, S, N, &E), E); }
 FTactileTriggerEffect UTactileSubsystem::TriggerGalloping(int32 A, int32 B, int32 F1, int32 F2, int32 F) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_galloping(A, B, F1, F2, F, &E), E); }
 FTactileTriggerEffect UTactileSubsystem::TriggerMachine(int32 A, int32 B, int32 X, int32 Y, int32 F, int32 P) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_machine(A, B, X, Y, F, P, &E), E); }
+
+// ---- Players ----
+
+namespace
+{
+    FTactileInputState ToInput(const tactile_input_state& S)
+    {
+        FTactileInputState In;
+        In.LeftStick = FVector2D(Axis(S.left_x), Axis(S.left_y));
+        In.RightStick = FVector2D(Axis(S.right_x), Axis(S.right_y));
+        In.L2 = S.l2 / 255.f;
+        In.R2 = S.r2 / 255.f;
+        In.Buttons = static_cast<int32>(S.buttons);
+        In.GyroDegPerSec = FVector(S.gyro_dps[0], S.gyro_dps[1], S.gyro_dps[2]);
+        In.AccelG = FVector(S.accel_g[0], S.accel_g[1], S.accel_g[2]);
+        In.BatteryPercent = S.battery_percent;
+        return In;
+    }
+    bool ValidPlayer(int32 Player) { return Player >= 1 && Player <= UTactileSubsystem::MaxPlayers; }
+}
+
+void UTactileSubsystem::TickPlayers()
+{
+    if (!Context || (tactile_abi_version() & 0xFFFF) < 2) { return; }
+    for (int32 i = 0; i < MaxPlayers; ++i)
+    {
+        FPlayerSlotState& P = Players[i];
+        // Follow the slot: it can move (swap) or empty out.
+        tactile_controller* Slot = nullptr;
+        if (tactile_context_get_player(Context, i + 1, &Slot) != TACTILE_OK) { Slot = nullptr; }
+        if (Slot == P.Pad) { if (Slot) { tactile_controller_release(Slot); } }
+        else
+        {
+            if (P.Pad) { tactile_controller_release(P.Pad); }
+            P.Pad = Slot;
+        }
+        tactile_input_state S{};
+        S.struct_size = sizeof(S);
+        const bool bNow = P.Pad && tactile_controller_get_input(P.Pad, &S) == TACTILE_OK;
+        P.Input = bNow ? ToInput(S) : FTactileInputState();
+        P.PressedEdges = P.Input.Buttons & ~P.PreviousButtons;
+        P.PreviousButtons = P.Input.Buttons;
+        if (bNow != P.bConnected)
+        {
+            P.bConnected = bNow;
+            OnPlayerConnectionChanged.Broadcast(i + 1, bNow);
+        }
+    }
+}
+
+tactile_controller* UTactileSubsystem::PlayerPad(int32 Player) const
+{
+    return ValidPlayer(Player) ? Players[Player - 1].Pad : nullptr;
+}
+
+bool UTactileSubsystem::IsPlayerConnected(int32 Player) const { return ValidPlayer(Player) && Players[Player - 1].bConnected; }
+FTactileInputState UTactileSubsystem::GetPlayerInput(int32 Player) const { return ValidPlayer(Player) ? Players[Player - 1].Input : FTactileInputState(); }
+bool UTactileSubsystem::WasPlayerButtonMaskPressed(int32 Player, int32 Mask) const { return ValidPlayer(Player) && (Players[Player - 1].PressedEdges & Mask) != 0; }
+
+void UTactileSubsystem::SetPlayerLightbar(int32 Player, FColor C) { if (tactile_controller* P = PlayerPad(Player)) tactile_controller_set_lightbar(P, C.R, C.G, C.B); }
+void UTactileSubsystem::SetPlayerRumble(int32 Player, float L, float R) { if (tactile_controller* P = PlayerPad(Player)) tactile_controller_set_rumble(P, To8(L), To8(R)); }
+
+void UTactileSubsystem::SetPlayerTrigger(int32 Player, ETactileTriggerSide Side, const FTactileTriggerEffect& Effect)
+{
+    tactile_controller* P = PlayerPad(Player);
+    if (!P || !Effect.IsValid()) return;
+    tactile_trigger_effect E{};
+    FMemory::Memcpy(E.bytes, Effect.Bytes.GetData(), 11);
+    tactile_controller_set_trigger(P, static_cast<int32>(Side), &E);
+}
+
+void UTactileSubsystem::PlayPlayerHaptic(int32 Player, ETactileHapticEffect Effect, float Intensity, ETactileHapticSide Side)
+{
+    if (tactile_controller* P = PlayerPad(Player)) tactile_haptics_play(P, static_cast<int32>(Effect), Intensity, static_cast<int32>(Side));
+}
+
+void UTactileSubsystem::SwapPlayers(int32 PlayerA, int32 PlayerB)
+{
+    if (!Context || !ValidPlayer(PlayerA) || !ValidPlayer(PlayerB) || PlayerA == PlayerB) return;
+    if (tactile_controller* A = PlayerPad(PlayerA)) { tactile_context_assign_player(Context, A, PlayerB); }
+    else if (tactile_controller* B = PlayerPad(PlayerB)) { tactile_context_assign_player(Context, B, PlayerA); }
+}
+
+void UTactileSubsystem::SetPlayerLightsEnabled(bool bEnabled)
+{
+    if (Context && (tactile_abi_version() & 0xFFFF) >= 2) { tactile_context_set_player_options(Context, 0, bEnabled ? 1 : 0); }
+}

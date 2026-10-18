@@ -2,6 +2,7 @@
 // events to the main thread and exposes one active controller.
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -30,6 +31,9 @@ namespace Tactile
         static InputState NewState() => new InputState { struct_size = 72 };
 
         public bool IsValid => handle != IntPtr.Zero;
+
+        /// <summary>Player number (1-8), or 0 when this controller has none.</summary>
+        public int Player => handle == IntPtr.Zero ? 0 : Math.Max(0, Native.tactile_controller_get_player(handle));
 
         public ControllerInfo Info
         {
@@ -125,8 +129,18 @@ namespace Tactile
     public sealed class TactileManager : MonoBehaviour
     {
         public bool exclusive;
+        [Tooltip("Player slots for local multiplayer / split screen (1-8).")]
+        [Range(1, 8)] public int maxPlayers = 4;
+        [Tooltip("Show each player's number on the player LEDs and colour on the lightbar.")]
+        public bool playerLights = true;
+        /// <summary>The first controller (single-player convenience). For split screen use GetPlayer.</summary>
         public TactileController Controller { get; private set; }
         public event Action<TactileController, ControllerEvent> ControllerChanged;
+        /// <summary>A controller's player number changed (0 = it no longer has one).</summary>
+        public event Action<TactileController, int> PlayerChanged;
+
+        // One wrapper per native handle, so GetPlayer allocates nothing per frame.
+        readonly Dictionary<IntPtr, TactileController> wrappers = new Dictionary<IntPtr, TactileController>();
 
         IntPtr context;
         bool controllerConnected;
@@ -156,6 +170,38 @@ namespace Tactile
             TactileException.Check(Native.tactile_context_create(ref o, out context));
             self = GCHandle.Alloc(this);
             Native.tactile_context_set_callback(context, callback, GCHandle.ToIntPtr(self));
+            if ((Native.tactile_abi_version() & 0xFFFF) >= Native.AbiMinorPlayers)
+                Native.tactile_context_set_player_options(context, maxPlayers, playerLights ? 1 : 0);
+        }
+
+        /// <summary>The controller holding player <paramref name="player"/>'s slot (1-based), or null.
+        /// It may be disconnected while its slot is held; TryGetInput then returns false.</summary>
+        public TactileController GetPlayer(int player)
+        {
+            if (context == IntPtr.Zero || Native.tactile_context_get_player(context, player, out var h) != (int)Result.Ok || h == IntPtr.Zero)
+                return null;
+            return Wrap(h);
+        }
+
+        /// <summary>Moves a controller to a player slot, swapping with the current occupant.</summary>
+        public void AssignPlayer(TactileController controller, int player)
+        {
+            if (context == IntPtr.Zero || controller == null) return;
+            TactileException.Check(Native.tactile_context_assign_player(context, controller.Handle, player));
+        }
+
+        public void ReleasePlayer(int player)
+        {
+            if (context != IntPtr.Zero) TactileException.Check(Native.tactile_context_release_player(context, player));
+        }
+
+        /// <summary>Takes ownership of a retained handle, returning the shared wrapper for it.</summary>
+        TactileController Wrap(IntPtr retained)
+        {
+            if (wrappers.TryGetValue(retained, out var existing)) { Native.tactile_controller_release(retained); return existing; }
+            var w = new TactileController(retained);
+            wrappers[retained] = w;
+            return w;
         }
 
         void Update()
@@ -163,6 +209,12 @@ namespace Tactile
             while (pending.TryDequeue(out var item))
             {
                 var (h, evt) = item;
+                if (evt == ControllerEvent.PlayerChanged)
+                {
+                    var c = Wrap(h);
+                    PlayerChanged?.Invoke(c, Native.tactile_controller_get_player(c.Handle));
+                    continue;
+                }
                 bool isActive = Controller != null && Controller.Handle == h;
                 if (evt == ControllerEvent.Disconnected)
                 {
@@ -221,6 +273,8 @@ namespace Tactile
         {
             Controller?.Dispose();  // waits for an in-flight WritePcm
             Controller = null;
+            foreach (var w in wrappers.Values) w.Dispose();
+            wrappers.Clear();
             controllerConnected = false;
             if (context != IntPtr.Zero)
             {

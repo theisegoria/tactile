@@ -19,6 +19,12 @@ PackedByteArray to_bytes(int32_t result, const tactile_trigger_effect &e) {
 float axis(uint8_t v) { return (static_cast<int>(v) - 128) / 127.5f; }
 } // namespace
 
+// One native context for every TactilePad, so split-screen scenes with a node
+// per player open each controller once. Godot calls tree notifications on the
+// main thread, so the reference count needs no lock.
+tactile_context *TactilePad::shared_ctx = nullptr;
+int TactilePad::shared_refs = 0;
+
 TactilePad::TactilePad() {
     state.struct_size = sizeof(state);
 }
@@ -45,11 +51,37 @@ void TactilePad::open_context() {
         UtilityFunctions::push_error("Tactile: native library ABI mismatch");
         return;
     }
-    if (tactile_permission_status() != TACTILE_PERMISSION_GRANTED) tactile_permission_request();
-    tactile_options o{};
-    o.struct_size = sizeof(o);
-    o.mode = exclusive ? TACTILE_MODE_EXCLUSIVE : TACTILE_MODE_SHARED;
-    if (tactile_context_create(&o, &ctx) != TACTILE_OK) ctx = nullptr;
+    if (!shared_ctx) {
+        if (tactile_permission_status() != TACTILE_PERMISSION_GRANTED) tactile_permission_request();
+        tactile_options o{};
+        o.struct_size = sizeof(o);
+        o.mode = exclusive ? TACTILE_MODE_EXCLUSIVE : TACTILE_MODE_SHARED;
+        if (tactile_context_create(&o, &shared_ctx) != TACTILE_OK) {
+            shared_ctx = nullptr;
+            return;
+        }
+    }
+    ++shared_refs;
+    ctx = shared_ctx;
+    if ((tactile_abi_version() & 0xFFFF) >= 2) tactile_context_set_player_options(ctx, 0, player_lights ? 1 : 0);
+}
+
+void TactilePad::set_player_lights(bool v) {
+    player_lights = v;
+    if (ctx && (tactile_abi_version() & 0xFFFF) >= 2) tactile_context_set_player_options(ctx, 0, v ? 1 : 0);
+}
+
+int64_t TactilePad::get_assigned_player() const {
+    return pad && (tactile_abi_version() & 0xFFFF) >= 2 ? tactile_controller_get_player(pad) : 0;
+}
+
+void TactilePad::follow(tactile_controller *retained) {
+    if (retained == pad) {
+        if (retained) tactile_controller_release(retained);
+        return;
+    }
+    if (pad) tactile_controller_release(pad);
+    pad = retained;
 }
 
 void TactilePad::close_context(bool notify) {
@@ -58,8 +90,11 @@ void TactilePad::close_context(bool notify) {
         pad = nullptr;
     }
     if (ctx) {
-        tactile_context_destroy(ctx); // restores neutral output
         ctx = nullptr;
+        if (--shared_refs == 0 && shared_ctx) {
+            tactile_context_destroy(shared_ctx); // restores neutral output
+            shared_ctx = nullptr;
+        }
     }
     const bool had_controller = was_connected;
     std::memset(&state, 0, sizeof(state));
@@ -88,6 +123,31 @@ tactile_controller *find_reporting(tactile_context *ctx, tactile_controller *ski
 
 void TactilePad::_process(double) {
     if (!ctx) return;
+    if (player > 0) {
+        // Follow the player's slot; it may move (assignment) or empty out.
+        tactile_controller *slot = nullptr;
+        if (tactile_context_get_player(ctx, (int32_t)player, &slot) != TACTILE_OK) slot = nullptr;
+        const bool changed = slot != pad;
+        follow(slot);
+        if (changed && was_connected) {
+            emit_signal("controller_disconnected");
+            was_connected = false;
+        }
+        state.struct_size = sizeof(state);
+        const bool connected = pad && tactile_controller_get_input(pad, &state) == TACTILE_OK;
+        if (connected != was_connected) {
+            was_connected = connected;
+            emit_signal(connected ? "controller_connected" : "controller_disconnected");
+        }
+        const uint32_t b = connected ? state.buttons : 0;
+        pressed_edges = b & ~previous_buttons;
+        previous_buttons = b;
+        if (!connected) {
+            std::memset(&state, 0, sizeof(state));
+            state.struct_size = sizeof(state);
+        }
+        return;
+    }
     bool connected = false;
     if (pad) {
         state.struct_size = sizeof(state);
@@ -182,6 +242,13 @@ PackedByteArray TactilePad::trigger_galloping(int64_t a, int64_t b, int64_t f1, 
 PackedByteArray TactilePad::trigger_machine(int64_t a, int64_t b, int64_t x, int64_t y, int64_t f, int64_t p) { tactile_trigger_effect e{}; return to_bytes(tactile_trigger_machine((int32_t)a, (int32_t)b, (int32_t)x, (int32_t)y, (int32_t)f, (int32_t)p, &e), e); }
 
 void TactilePad::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_player", "player"), &TactilePad::set_player);
+    ClassDB::bind_method(D_METHOD("get_player"), &TactilePad::get_player);
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "player", PROPERTY_HINT_RANGE, "0,8"), "set_player", "get_player");
+    ClassDB::bind_method(D_METHOD("set_player_lights", "enabled"), &TactilePad::set_player_lights);
+    ClassDB::bind_method(D_METHOD("get_player_lights"), &TactilePad::get_player_lights);
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "player_lights"), "set_player_lights", "get_player_lights");
+    ClassDB::bind_method(D_METHOD("get_assigned_player"), &TactilePad::get_assigned_player);
     ClassDB::bind_method(D_METHOD("set_exclusive", "exclusive"), &TactilePad::set_exclusive);
     ClassDB::bind_method(D_METHOD("get_exclusive"), &TactilePad::get_exclusive);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "exclusive"), "set_exclusive", "get_exclusive");

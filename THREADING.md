@@ -12,6 +12,7 @@
 | `PCMInput` | One producer thread per instance. |
 | `HapticsPump` | `start`/`stop`/`metrics`/`sendWhileIdle` from any thread; the pump runs on its own time-constraint thread. `stop` waits (at most about one 10.67 ms period) for the thread's last pass, except when called on the pump thread itself. |
 | `ControllerBridge` | `@MainActor`. |
+| `PlayerAssigner` | `Sendable`; safe from any thread/task. Event streams are independent per call. |
 
 ## C ABI (`tactile.h`)
 
@@ -35,3 +36,7 @@
 | `tactile_haptics_play` | yes | no | |
 | `tactile_haptics_write_pcm` | **one producer thread per controller** | no | frames beyond buffer capacity are dropped and counted; returns 0 (queues nothing) while haptics are stopped |
 | `tactile_haptics_get_metrics` | yes | no | all zero while haptics are stopped |
+| `tactile_context_set_player_options` | yes | no | ABI 0.2; enabling lights lights every connected player |
+| `tactile_context_get_player` | yes | no | ABI 0.2; returned handle is retained |
+| `tactile_context_assign_player`, `tactile_context_release_player` | yes | no | ABI 0.2; affected controllers get `TACTILE_EVENT_PLAYER_CHANGED` |
+| `tactile_controller_get_player` | yes | no | ABI 0.2 |

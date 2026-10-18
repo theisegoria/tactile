@@ -6,6 +6,15 @@
   "unity": "2022.3",
   "license": "MIT",
   "samples": [
-    { "displayName": "Demo", "description": "Polls input, plays haptic clicks, toggles a weapon trigger.", "path": "Samples~/Demo" }
+    {
+      "displayName": "Demo",
+      "description": "Polls input, plays haptic clicks, toggles a weapon trigger.",
+      "path": "Samples~/Demo"
+    },
+    {
+      "displayName": "Split screen",
+      "description": "One avatar per player (up to 4), each driven by its own controller.",
+      "path": "Samples~/SplitScreen"
+    }
   ]
 }

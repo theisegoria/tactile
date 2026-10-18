@@ -6,6 +6,26 @@ Before 1.0.0, minor versions may break the Swift API; the C ABI major
 
 ## [Unreleased]
 
+### Added — multiple controllers / split screen
+- `PlayerSlots` (TactileCore): stable player numbers 1–8 keyed by controller identity;
+  seats held across disconnects; assign/swap/release; `LightbarColor.player(_:)`.
+- `PlayerAssigner` (Tactile): attaches to a `ControllerManager`, optional automatic
+  player LEDs and lightbar colours.
+- C ABI 0.2 (additive): `tactile_context_set_player_options`, `tactile_context_get_player`,
+  `tactile_context_assign_player`, `tactile_context_release_player`,
+  `tactile_controller_get_player`, `TACTILE_EVENT_PLAYER_CHANGED`. Player lights default
+  off for C hosts.
+- Bindings: Python `Context.player()/players()/assign_player()`, Unity
+  `TactileManager.GetPlayer()/AssignPlayer()/PlayerChanged` and a split-screen sample,
+  Godot `TactilePad.player` (all nodes share one context), Unreal per-player functions.
+- Tactile Lab: Players tab, player chips in the header, `--scenario split`.
+
+### Fixed
+- `ControllerManager` could deadlock when a lifecycle event was emitted while an event
+  stream was being cancelled (it yielded while holding the lock its onTermination
+  handler takes). Emission now uses a separate lock.
+- Tactile Lab controller artwork no longer shows a PlayStation logo.
+
 ### Added (experimental — gate 6, unverified protocol facts)
 - `AudioSettings` on `OutputState`: headphone/speaker/mic volume and output path.
 - `HIDDescriptor`: report-descriptor parser (sizes of every input/output/feature report).

@@ -88,3 +88,14 @@ Record everything in `docs/receipts/gate-6.md`; promote confirmed facts in `PROT
 | 6.5 | `tactilectl mic-record out.wav 10` | playable speech in `out.wav`; try `--rate 16000/48000` if garbled |
 | 6.6 | Edge: `tactilectl features --label p1 --save p1.json`, switch profile (Fn + face button), `features --label p2 --save p2.json`, `features-diff p1.json p2.json` | which reports and bytes change per profile |
 | 6.7 | Edge: swap a stick module, snapshot again, diff | reports that identify the module |
+
+## Players — multiple controllers / split screen
+
+| # | Step | Expect / record |
+|---|---|---|
+| P.1 | Pair two controllers; open Tactile Lab › Players (⌘6) | P1 and P2 in connection order; each card's sticks follow its own controller |
+| P.2 | Turn on "Show player lights" | player LEDs show 1 and 2; lightbars blue and red |
+| P.3 | Switch P1 off and on again | P1 card shows "Disconnected — seat held", then the same controller returns as P1 |
+| P.4 | Move P2 to Player 1 | the two swap; lights follow |
+| P.5 | Identify on each card | only that controller rumbles briefly |
+| P.6 | Four controllers, audio haptics on all (`tactilectl haptic --effect texture` per controller) | record dropped reports and lateness per controller; note Bluetooth bandwidth limits |

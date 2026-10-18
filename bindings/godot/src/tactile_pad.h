@@ -27,6 +27,17 @@ public:
     void set_exclusive(bool v) { exclusive = v; }
     bool get_exclusive() const { return exclusive; }
 
+    // Split screen: 0 follows whichever controller is reporting (single
+    // player); 1-8 follows that player's slot. All TactilePad nodes share one
+    // native context, so each controller is opened once.
+    void set_player(int64_t p) { player = p < 0 ? 0 : (p > 8 ? 8 : p); }
+    int64_t get_player() const { return player; }
+    // Shared by every TactilePad (last value set wins).
+    void set_player_lights(bool v);
+    bool get_player_lights() const { return player_lights; }
+    // The player number of the controller this node currently follows (0 if none).
+    int64_t get_assigned_player() const;
+
     // State
     bool is_connected_pad() const;
     Dictionary get_info() const;
@@ -70,8 +81,15 @@ private:
     void open_context();
     void close_context(bool notify);
 
-    tactile_context *ctx = nullptr;
+    void follow(tactile_controller *retained);
+
+    static tactile_context *shared_ctx;
+    static int shared_refs;
+
+    tactile_context *ctx = nullptr;  // borrowed from shared_ctx while in the tree
     tactile_controller *pad = nullptr;
+    int64_t player = 0;
+    bool player_lights = true;
     tactile_input_state state{};
     uint32_t previous_buttons = 0;
     uint32_t pressed_edges = 0;

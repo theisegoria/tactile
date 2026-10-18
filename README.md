@@ -10,6 +10,13 @@ player and mute LEDs, calibrated IMU, and the Edge's paddles and Fn buttons.
 It works *alongside* GameController: GameController keeps doing discovery and
 standard input; Tactile talks to the controller's HID protocol directly for the rest.
 
+![Tactile Lab's Players tab: four controllers as players 1–4, each with live sticks, triggers and buttons](docs/images/players-dark.png)
+
+![Tactile Lab's Input tab: live controller diagram with sticks, triggers and named controls](docs/images/input-light.png)
+
+*Tactile Lab, the companion macOS app (`App/`), shown in its simulation mode: no
+controller was connected for these captures.*
+
 > Status: 0.1.0, pre-release. All software gates (0–4) are built and unit-tested, but
 > **nothing has been verified on a controller yet** — see `docs/receipts/` and the
 > status column in `PROTOCOL.md`.
@@ -69,6 +76,31 @@ swift run tactilectl info
 swift run tactilectl trigger right weapon 3 6 8
 swift run tactilectl haptic --effect click
 ```
+
+## Multiple controllers (local multiplayer, split screen)
+
+Every connected controller gets a player number, 1–4 by default (up to 8). A
+controller that disconnects keeps its seat and comes back as the same player; when
+every seat is taken, the lowest seat held for a disconnected controller is reused.
+Optionally, each controller shows its number on the player LEDs and its player
+colour (blue, red, green, pink) on the lightbar.
+
+```swift
+let manager = ControllerManager()
+let players = PlayerAssigner()          // PlayerOptions: capacity, holdDisconnected, applyLights, colors
+players.attach(to: manager)
+
+if let p2 = players.controller(forPlayer: 2) {
+    try await p2.setTrigger(.right, try .weapon(start: 3, end: 6, strength: 8))
+}
+players.assign(someController, to: 1)   // swaps with whoever was player 1
+```
+
+C hosts use `tactile_context_get_player`, `tactile_context_assign_player` and
+`TACTILE_EVENT_PLAYER_CHANGED` (ABI 0.2). The Unity, Godot, Unreal and Python
+bindings expose the same per-player API; Unity ships a split-screen sample. All
+controllers share the Mac's Bluetooth radio, and running audio haptics on several
+at once has not been measured on hardware.
 
 ## Documentation
 

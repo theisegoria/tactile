@@ -15,7 +15,7 @@ namespace Tactile
     public enum MuteLed : int { Off = 0, On = 1, Pulse = 2 }
     public enum HapticSide : int { Left = 0, Right = 1, Both = 2 }
     public enum HapticEffect : int { Click = 0, Detent = 1, Texture = 2, Impact = 3 }
-    public enum ControllerEvent : int { Connected = 0, Reconnected = 1, Disconnected = 2 }
+    public enum ControllerEvent : int { Connected = 0, Reconnected = 1, Disconnected = 2, PlayerChanged = 3 }
     public enum Permission : int { Granted = 0, Denied = 1, NotDetermined = 2 }
 
     [Flags]
@@ -109,6 +109,14 @@ namespace Tactile
         [DllImport(Lib)] public static extern int tactile_context_controller_count(IntPtr context);
         [DllImport(Lib)] public static extern int tactile_context_get_controller(IntPtr context, int index, out IntPtr controller);
         [DllImport(Lib)] public static extern int tactile_context_wait_for_controller(IntPtr context, int timeoutMs, out IntPtr controller);
+
+        // Players: local multiplayer / split screen (ABI 0.2).
+        public const int AbiMinorPlayers = 2;
+        [DllImport(Lib)] public static extern int tactile_context_set_player_options(IntPtr context, int maxPlayers, int applyLights);
+        [DllImport(Lib)] public static extern int tactile_context_get_player(IntPtr context, int player, out IntPtr controller);
+        [DllImport(Lib)] public static extern int tactile_context_assign_player(IntPtr context, IntPtr controller, int player);
+        [DllImport(Lib)] public static extern int tactile_context_release_player(IntPtr context, int player);
+        [DllImport(Lib)] public static extern int tactile_controller_get_player(IntPtr controller);
 
         [DllImport(Lib)] public static extern void tactile_controller_retain(IntPtr controller);
         [DllImport(Lib)] public static extern void tactile_controller_release(IntPtr controller);

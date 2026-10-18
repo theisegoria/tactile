@@ -56,6 +56,7 @@ struct FTactileInputState
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FTactileConnectionChanged, bool, bConnected);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTactilePlayerConnectionChanged, int32, Player, bool, bConnected);
 
 UCLASS()
 class TACTILEUE_API UTactileSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
@@ -92,6 +93,24 @@ public:
     /** Feeds interleaved float PCM to the voice coils (one producer thread). */
     int32 WritePcm(const float* Interleaved, int32 Frames, int32 Channels, double SampleRate);
 
+    // ---- Players: local multiplayer / split screen (1-based, up to MaxPlayers) ----
+    static constexpr int32 MaxPlayers = 4;
+
+    UPROPERTY(BlueprintAssignable, Category = "Tactile|Players") FTactilePlayerConnectionChanged OnPlayerConnectionChanged;
+
+    UFUNCTION(BlueprintPure, Category = "Tactile|Players") bool IsPlayerConnected(int32 Player) const;
+    UFUNCTION(BlueprintPure, Category = "Tactile|Players") FTactileInputState GetPlayerInput(int32 Player) const;
+    UFUNCTION(BlueprintPure, Category = "Tactile|Players")
+    bool WasPlayerButtonMaskPressed(int32 Player, UPARAM(meta = (Bitmask, BitmaskEnum = "/Script/TactileUE.ETactileButton")) int32 Mask) const;
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void SetPlayerLightbar(int32 Player, FColor Color);
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void SetPlayerRumble(int32 Player, float Left, float Right);
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void SetPlayerTrigger(int32 Player, ETactileTriggerSide Side, const FTactileTriggerEffect& Effect);
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void PlayPlayerHaptic(int32 Player, ETactileHapticEffect Effect, float Intensity = 1.f, ETactileHapticSide Side = ETactileHapticSide::Both);
+    /** Swaps the controllers of two player slots. */
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void SwapPlayers(int32 PlayerA, int32 PlayerB);
+    /** Show each player's number on the player LEDs and colour on the lightbar (default on). */
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Players") void SetPlayerLightsEnabled(bool bEnabled);
+
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers") static FTactileTriggerEffect TriggerOff();
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers") static FTactileTriggerEffect TriggerFeedback(int32 Position, int32 Strength);
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers") static FTactileTriggerEffect TriggerWeapon(int32 Start, int32 End, int32 Strength);
@@ -102,6 +121,19 @@ public:
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers|Unofficial") static FTactileTriggerEffect TriggerMachine(int32 Start, int32 End, int32 AmplitudeA, int32 AmplitudeB, int32 Frequency, int32 Period);
 
 private:
+    tactile_controller* PlayerPad(int32 Player) const;
+    void TickPlayers();
+
+    struct FPlayerSlotState
+    {
+        tactile_controller* Pad = nullptr;
+        FTactileInputState Input;
+        int32 PreviousButtons = 0;
+        int32 PressedEdges = 0;
+        bool bConnected = false;
+    };
+    FPlayerSlotState Players[MaxPlayers];
+
     tactile_context* Context = nullptr;
     tactile_controller* Pad = nullptr;
     FTactileInputState Input;
