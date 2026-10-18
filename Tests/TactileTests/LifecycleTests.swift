@@ -7,6 +7,14 @@ import TactileCore
 @testable import TactileCABI
 import CTactileHeaders
 
+/// C teardown/callback draining blocks a thread while Swift tasks finish.
+/// Never occupy a cooperative executor worker with that synchronous wait.
+private func onBlockingThread<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+    await withCheckedContinuation { continuation in
+        Thread.detachNewThread { continuation.resume(returning: body()) }
+    }
+}
+
 final class FakeDiscovery: Sendable {
     let stream: AsyncThrowingStream<ManagerDiscoveryEvent, any Error>
     let continuation: AsyncThrowingStream<ManagerDiscoveryEvent, any Error>.Continuation
@@ -162,7 +170,7 @@ func eventually(_ predicate: @escaping @Sendable () async -> Bool) async -> Bool
         let box = try #require(context.box(at: 0))
         let handle = OpaquePointer(Unmanaged.passRetained(box).toOpaque())
         defer { TactileCABI.tactile_controller_release(handle) }
-        await Task.detached { context.shutdown() }.value
+        await onBlockingThread { context.shutdown() }
         #expect(box.isInvalidated)
         #expect(!box.isLive)
         #expect(TactileCABI.tactile_controller_set_rumble(handle, 1, 1) == TACTILE_ERR_NOT_CONNECTED.rawValue)
@@ -197,16 +205,18 @@ private func blockingTestCallback(_ user: UnsafeMutableRawPointer?, _ controller
         source.continuation.yield(.connected(device(1), { connection }))
         #expect(await eventually { probe.entered.withLock { $0 } })
         let cleared = Mutex(false)
-        let clear = Task.detached {
-            context.setCallback(nil, nil)
-            cleared.withLock { $0 = true }
+        let clear = Task {
+            await onBlockingThread {
+                context.setCallback(nil, nil)
+                cleared.withLock { $0 = true }
+            }
         }
         try? await Task.sleep(for: .milliseconds(30))
         #expect(!cleared.withLock { $0 })
         probe.release.signal()
         await clear.value
         source.continuation.yield(.disconnected(1))
-        await Task.detached { context.shutdown() }.value
+        await onBlockingThread { context.shutdown() }
         #expect(probe.count.withLock { $0 } == 1)
     }
 

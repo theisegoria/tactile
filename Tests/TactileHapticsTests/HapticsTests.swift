@@ -4,6 +4,14 @@ import Testing
 import TactileCore
 @testable import TactileHaptics
 
+/// A deliberately blocked pump must not consume the executor workers needed
+/// by the test's timer and release task (especially on small CI machines).
+private func onBlockingThread<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+    await withCheckedContinuation { continuation in
+        Thread.detachNewThread { continuation.resume(returning: body()) }
+    }
+}
+
 func rms(_ x: ArraySlice<Float>) -> Float {
     (x.reduce(0) { $0 + $1 * $1 } / Float(max(x.count, 1))).squareRoot()
 }
@@ -277,9 +285,11 @@ func rms(_ x: ArraySlice<Float>) -> Float {
         // last stopAll with no render in flight, nothing may still be playing.
         let m = HapticsMixer()
         let done = Atomic<Bool>(false)
-        let renderer = Task.detached {
-            var out: [Int8] = []
-            while !done.load(ordering: .acquiring) { _ = m.render(into: &out) }
+        let renderer = Task {
+            await onBlockingThread {
+                var out: [Int8] = []
+                while !done.load(ordering: .acquiring) { _ = m.render(into: &out) }
+            }
         }
         for _ in 0..<2000 {
             m.play(.tone(intensity: 1, frequency: 100, duration: 10))
@@ -453,11 +463,11 @@ private final class StalledSink: HapticsReportSink, Sendable {
         let sink = StalledSink()
         let pump = HapticsPump(mixer: HapticsMixer(), sink: sink, sendWhileIdle: true)
         pump.start()
-        let didEnter = await Task.detached { sink.waitUntilEntered() }.value
+        let didEnter = await onBlockingThread { sink.waitUntilEntered() }
         #expect(didEnter)
-        let stopping = Task.detached { pump.stop() }
+        let stopping = Task { await onBlockingThread { pump.stop() } }
         for _ in 0..<100 where pump.isRunning { try await Task.sleep(for: .milliseconds(1)) }
-        let starting = Task.detached { pump.start() }
+        let starting = Task { await onBlockingThread { pump.start() } }
         try await Task.sleep(for: .milliseconds(40))
         #expect(sink.calls.withLock { $0 } == 1)
         sink.release.signal()
@@ -473,7 +483,9 @@ private final class StalledSink: HapticsReportSink, Sendable {
         let pump = HapticsPump(mixer: HapticsMixer(), sink: CountingSink(), sendWhileIdle: true)
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<6 {
-                group.addTask { for _ in 0..<20 { pump.start(); pump.stop() } }
+                group.addTask {
+                    await onBlockingThread { for _ in 0..<20 { pump.start(); pump.stop() } }
+                }
             }
         }
         pump.stop()
