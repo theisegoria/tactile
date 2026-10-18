@@ -70,6 +70,13 @@ int main(void) {
     CHECK(tactile_controller_set_lightbar(NULL, 1, 2, 3) == TACTILE_ERR_INVALID_ARGUMENT);
     CHECK(tactile_controller_get_input(NULL, NULL) == TACTILE_ERR_INVALID_ARGUMENT);
     CHECK(tactile_context_controller_count(NULL) == 0);
+    /* Players (ABI 0.2): NULL handles and out-of-range arguments are rejected. */
+    CHECK(TACTILE_EVENT_PLAYER_CHANGED == 3);
+    CHECK(tactile_context_get_player(NULL, 1, NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+    CHECK(tactile_context_assign_player(NULL, NULL, 1) == TACTILE_ERR_INVALID_ARGUMENT);
+    CHECK(tactile_context_release_player(NULL, 1) == TACTILE_ERR_INVALID_ARGUMENT);
+    CHECK(tactile_context_set_player_options(NULL, 4, 1) == TACTILE_ERR_INVALID_ARGUMENT);
+    CHECK(tactile_controller_get_player(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
     tactile_controller_release(NULL);
     tactile_context_destroy(NULL);
 

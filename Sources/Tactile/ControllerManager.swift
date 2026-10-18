@@ -38,6 +38,12 @@ public final class ControllerManager: Sendable {
         var generation: UInt64 = 0
     }
     private let state = Mutex(State())
+    /// Serialises registration, replay and emission so each controller is
+    /// announced once and in order. Yields happen under this lock, never under
+    /// `state`: a stream's onTermination takes `state` while the runtime holds
+    /// that task's status lock, and yielding to the same task under `state`
+    /// would invert the order and deadlock.
+    private let emission = Mutex(())
 
     public init(options: ConnectionOptions = .init()) {
         self.options = options
@@ -79,11 +85,14 @@ public final class ControllerManager: Sendable {
         let (stream, cont) = AsyncStream<ControllerEvent>.makeStream()
         let id = UUID()
         cont.onTermination = { [weak self] _ in self?.state.withLock { _ = $0.continuations.removeValue(forKey: id) } }
-        // Registration, replay and every emitted event share one lock, so each
+        // Registration, replay and every emitted event share `emission`, so each
         // controller is announced exactly once and in order.
-        state.withLock { s in
-            s.continuations[id] = cont
-            for c in s.byKey.values where c.isConnected { cont.yield(.connected(c)) }
+        emission.withLock { _ in
+            let connected = state.withLock { s -> [Controller] in
+                s.continuations[id] = cont
+                return s.byKey.values.filter(\.isConnected)
+            }
+            for c in connected { cont.yield(.connected(c)) }
         }
         start()
         return stream
@@ -171,9 +180,9 @@ public final class ControllerManager: Sendable {
     }
 
     private func emit(_ e: ControllerEvent, generation: UInt64) {
-        state.withLock { s in
-            guard s.generation == generation else { return }
-            for c in s.continuations.values { c.yield(e) }
+        emission.withLock { _ in
+            let targets = state.withLock { s in s.generation == generation ? Array(s.continuations.values) : [] }
+            for c in targets { c.yield(e) }
         }
     }
 

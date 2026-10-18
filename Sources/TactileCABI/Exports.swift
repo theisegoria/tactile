@@ -379,3 +379,51 @@ public func tactile_haptics_get_metrics(_ p: OpaquePointer?, _ out: UnsafeMutabl
     copyOut(r, to: out)
     return OK
 }
+
+// MARK: Players (ABI 0.2)
+
+@_cdecl("tactile_context_set_player_options")
+public func tactile_context_set_player_options(_ ctx: OpaquePointer?, _ maxPlayers: Int32, _ applyLights: Int32) -> Int32 {
+    guard let c = context(ctx) else { return EINVAL }
+    guard maxPlayers == 0 || (1...Int32(PlayerSlots.maxCapacity)).contains(maxPlayers), (-1...1).contains(applyLights) else { return EINVAL }
+    let before = c.players.slots
+    c.players.update { o in
+        if maxPlayers > 0 { o.capacity = Int(maxPlayers) }
+        if applyLights >= 0 { o.applyLights = applyLights == 1 }
+    }
+    // Report controllers whose slot disappeared with a smaller capacity.
+    let after = c.players.slots
+    let lost = before.slots.compactMap { $0?.id }.filter { after.player(of: $0) == nil }
+    c.applyPlayerChanges(lost.map { .released(player: 0, id: $0) })
+    return OK
+}
+
+@_cdecl("tactile_context_get_player")
+public func tactile_context_get_player(_ ctx: OpaquePointer?, _ player: Int32, _ out: UnsafeMutablePointer<OpaquePointer?>?) -> Int32 {
+    guard let c = context(ctx), let out, player >= 1 else { return EINVAL }
+    guard let b = c.playerBox(Int(player)) else { return TACTILE_ERR_NOT_FOUND.rawValue }
+    out.pointee = retained(b)
+    return OK
+}
+
+@_cdecl("tactile_context_assign_player")
+public func tactile_context_assign_player(_ ctx: OpaquePointer?, _ p: OpaquePointer?, _ player: Int32) -> Int32 {
+    guard let c = context(ctx), let b = controller(p) else { return EINVAL }
+    guard (1...Int32(c.players.slots.capacity)).contains(player) else { return EINVAL }
+    c.applyPlayerChanges(c.players.assign(b.controller, to: Int(player)))
+    return OK
+}
+
+@_cdecl("tactile_context_release_player")
+public func tactile_context_release_player(_ ctx: OpaquePointer?, _ player: Int32) -> Int32 {
+    guard let c = context(ctx) else { return EINVAL }
+    guard (1...Int32(c.players.slots.capacity)).contains(player) else { return EINVAL }
+    c.applyPlayerChanges(c.players.release(player: Int(player)))
+    return OK
+}
+
+@_cdecl("tactile_controller_get_player")
+public func tactile_controller_get_player(_ p: OpaquePointer?) -> Int32 {
+    guard let b = controller(p) else { return EINVAL }
+    return b.player.load(ordering: .relaxed)
+}

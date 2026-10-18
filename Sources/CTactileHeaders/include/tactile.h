@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 #define TACTILE_ABI_VERSION_MAJOR 0
-#define TACTILE_ABI_VERSION_MINOR 1
+#define TACTILE_ABI_VERSION_MINOR 2
 #define TACTILE_ABI_VERSION ((TACTILE_ABI_VERSION_MAJOR << 16) | TACTILE_ABI_VERSION_MINOR)
 
 typedef enum tactile_result {
@@ -58,7 +58,14 @@ typedef enum tactile_haptic_side { TACTILE_HAPTIC_LEFT = 0, TACTILE_HAPTIC_RIGHT
 typedef enum tactile_haptic_effect {
     TACTILE_HAPTIC_CLICK = 0, TACTILE_HAPTIC_DETENT = 1, TACTILE_HAPTIC_TEXTURE = 2, TACTILE_HAPTIC_IMPACT = 3
 } tactile_haptic_effect;
-typedef enum tactile_event { TACTILE_EVENT_CONNECTED = 0, TACTILE_EVENT_RECONNECTED = 1, TACTILE_EVENT_DISCONNECTED = 2 } tactile_event;
+typedef enum tactile_event {
+    TACTILE_EVENT_CONNECTED = 0,
+    TACTILE_EVENT_RECONNECTED = 1,
+    TACTILE_EVENT_DISCONNECTED = 2,
+    /* ABI 0.2: the controller's player number changed (read it with
+     * tactile_controller_get_player; 0 means it no longer has one). */
+    TACTILE_EVENT_PLAYER_CHANGED = 3
+} tactile_event;
 
 /* Button bits in tactile_input_state.buttons. */
 #define TACTILE_BUTTON_SQUARE       (1u << 0)
@@ -187,6 +194,28 @@ int32_t tactile_context_get_controller(tactile_context *context, int32_t index, 
  * access), else TACTILE_ERR_TIMEOUT.
  * Do not call on a thread that must stay responsive. */
 int32_t tactile_context_wait_for_controller(tactile_context *context, int32_t timeout_ms, tactile_controller **out_controller);
+
+/* ---- Players: local multiplayer / split screen (ABI 0.2) --------------
+ * Every context numbers its controllers 1..max_players in the order they
+ * connect. A controller that disconnects keeps its number and gets it back on
+ * reconnect (when every slot is taken, the lowest slot held for a
+ * disconnected controller is reused). All calls are thread-safe and
+ * non-blocking. */
+
+/* max_players: 1-8, or 0 to keep the current value (default 4).
+ * apply_lights: 1 = show the player number on the player LEDs and the player
+ * colour (blue, red, green, pink) on the lightbar whenever a controller gains
+ * or changes its number; 0 = never touch them (default); -1 = keep. */
+int32_t tactile_context_set_player_options(tactile_context *context, int32_t max_players, int32_t apply_lights);
+/* Retained handle of the controller holding `player` (1-based), which may be
+ * disconnected while its slot is held; TACTILE_ERR_NOT_FOUND if the slot is empty. */
+int32_t tactile_context_get_player(tactile_context *context, int32_t player, tactile_controller **out_controller);
+/* Moves `controller` to `player`, swapping with the current occupant. */
+int32_t tactile_context_assign_player(tactile_context *context, tactile_controller *controller, int32_t player);
+/* Empties `player`'s slot. */
+int32_t tactile_context_release_player(tactile_context *context, int32_t player);
+/* The controller's player number (1-8), 0 if it has none, or a negative tactile_result. */
+int32_t tactile_controller_get_player(tactile_controller *controller);
 
 /* ---- Controller ------------------------------------------------------- */
 

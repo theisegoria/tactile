@@ -50,6 +50,8 @@ final class ControllerBox: @unchecked Sendable {
     /// Set once the owning context is destroyed: the handle stays safe to
     /// release, but every operation reports TACTILE_ERR_NOT_CONNECTED.
     private let invalidatedFlag = Atomic<Bool>(false)
+    /// Player number (1-8), 0 when none. Written by the owning context.
+    let player = Atomic<Int32>(0)
 
     init(_ c: Controller) {
         controller = c
@@ -183,6 +185,12 @@ final class ControllerBox: @unchecked Sendable {
 
 final class ContextBox: @unchecked Sendable {
     let manager: ControllerManager
+    /// Player slots. C hosts opt in to automatic player lights.
+    let players: PlayerAssigner = {
+        var o = PlayerOptions()
+        o.applyLights = false
+        return PlayerAssigner(options: o)
+    }()
     private let boxes = Mutex<[String: ControllerBox]>([:])
     private let order = Mutex<[String]>([])
     struct Callback: @unchecked Sendable {
@@ -261,7 +269,12 @@ final class ContextBox: @unchecked Sendable {
             return nb
         }
         if kind == TACTILE_EVENT_RECONNECTED { box.restartInput() }
-        let event = Int32(kind.rawValue)
+        deliver(box, Int32(kind.rawValue))
+        applyPlayerChanges(players.handle(e))
+    }
+
+    /// Queues one callback invocation for `box`.
+    private func deliver(_ box: ControllerBox, _ event: Int32) {
         dispatch.withLock { d in
             guard !d.closed, d.callback != nil else { return }
             let handle = Unmanaged.passRetained(box)
@@ -273,6 +286,23 @@ final class ContextBox: @unchecked Sendable {
                 cb.fn(cb.user, OpaquePointer(handle.toOpaque()), event)
             }
         }
+    }
+
+    /// Mirrors player numbers into the handles and reports each change once.
+    func applyPlayerChanges(_ changes: [PlayerSlots.Change]) {
+        guard !changes.isEmpty, !dispatch.withLock({ $0.closed }) else { return }
+        var notified = Set<String>()
+        for change in changes {
+            guard let box = boxes.withLock({ $0[change.id] }) else { continue }
+            let number = Int32(players.slots.player(of: change.id) ?? 0)
+            box.player.store(number, ordering: .relaxed)
+            if notified.insert(change.id).inserted { deliver(box, Int32(TACTILE_EVENT_PLAYER_CHANGED.rawValue)) }
+        }
+    }
+
+    func playerBox(_ player: Int) -> ControllerBox? {
+        guard let id = players.slots.id(of: player) else { return nil }
+        return boxes.withLock { $0[id] }
     }
 
     var count: Int { order.withLock { $0.count } }
