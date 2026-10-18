@@ -391,7 +391,10 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         #expect(reports.allSatisfy { $0.count == 141 && CRC32.verify($0, prefix: .output) })
         let m = pump.metrics()
         #expect(abs(m.tickIntervalMeanUs - 10_666.7) < 1_500)
-        #expect(m.reportsSent == reports.count)
+        // stop() advances the pump generation; a report already handed to the
+        // sink at that instant completes as stale and is deliberately not
+        // counted as sent. So at most one fewer than the sink received.
+        #expect(m.reportsSent == reports.count || m.reportsSent == reports.count - 1)
     }
 
     @Test func stopJoinsThreadAndRestartDoesNotDoublePump() async throws {
