@@ -17,7 +17,13 @@ jobs:
       - name: Build (warnings are errors)
         run: swift build -Xswiftc -warnings-as-errors
       - name: Unit tests
-        run: swift test
+        run: swift test --skip 'silentMicScanExpires|silentRecordingHasIndependentDeadline'
+      # Keep the strict 250 ms wall-clock assertions independent of unrelated
+      # CPU-heavy DSP stress tests on the small hosted runner. Both still run.
+      - name: Silent recording deadline
+        run: swift test --skip-build --filter silentRecordingHasIndependentDeadline
+      - name: Silent scan deadline
+        run: swift test --skip-build --filter silentMicScanExpires
       - name: C ABI header check
         run: ./scripts/check-c-abi.sh
       - name: Python binding

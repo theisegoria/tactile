@@ -4,6 +4,17 @@ Automated tests (`swift test`, `scripts/check-c-abi.sh`) cover everything that c
 run without a controller. This checklist covers the rest. **Every acceptance test
 runs over Bluetooth.** Record results (and paste logs) in `docs/receipts/`.
 
+CI runs the two strict silent-stream deadline tests in their own invocations,
+after the other unit tests. This avoids timing their 40 ms deadlines while the
+same hosted runner is executing unrelated DSP stress tests. The 250 ms upper
+bounds remain unchanged, and no tests are omitted:
+
+```sh
+swift test --skip 'silentMicScanExpires|silentRecordingHasIndependentDeadline'
+swift test --skip-build --filter silentRecordingHasIndependentDeadline
+swift test --skip-build --filter silentMicScanExpires
+```
+
 ## Setup
 
 1. Pair the controller: hold PS + Create until the lightbar flashes, then System
