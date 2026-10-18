@@ -16,6 +16,11 @@ public enum AccessMode: String, Sendable, Codable {
 /// Tunables for a connection.
 public struct ConnectionOptions: Sendable {
     public var mode: AccessMode = .shared
+    /// Discovery applies this filter before opening, seizing, or initializing a device.
+    public var allowedTransports: Set<Transport> = [.bluetooth, .usb]
+    /// Existing clients restore owned output after reconnect. Test tools can
+    /// opt out so a reconnect never resumes a held effect.
+    public var restoreOutputOnReconnect = true
     /// Upper bound on report 0x31 frequency. Extra updates are coalesced (the
     /// latest state is always delivered), never queued unboundedly.
     public var maxOutputReportsPerSecond: Double = 125
@@ -67,6 +72,7 @@ public actor DeviceConnection {
     /// The CoreHID client. Released on close or disconnect: CoreHID has no
     /// unseize call, so dropping the client is what ends an exclusive seize.
     private var client: HIDDeviceClient?
+    private var testIO: ConnectionIO?
     private var builder: OutputReportBuilder
     private var limiter: RateLimiter
     private var desired = OutputState()
@@ -77,6 +83,7 @@ public actor DeviceConnection {
     /// Set for the whole of `close()`: no output other than the final neutral
     /// report may be issued once closing has begun.
     private var closing = false
+    private var closeTask: Task<Void, Never>?
     /// Incremented each time an output report 0x31/0x02 is issued, so a neutral
     /// send can tell whether something else went out after it.
     private var outputSequence: UInt64 = 0
@@ -104,6 +111,21 @@ public actor DeviceConnection {
         features = FeatureSet.resolve(model: info.model, firmware: nil)
         builder = OutputReportBuilder(features: features)
         limiter = RateLimiter(maxPerSecond: options.maxOutputReportsPerSecond, burst: 3)
+    }
+
+    /// Package-internal transport seam used by hardware-independent lifecycle tests.
+    package init(info: DeviceInfo, options: ConnectionOptions, io: ConnectionIO) {
+        self.info = info
+        self.options = options
+        testIO = io
+        features = FeatureSet.resolve(model: info.model, firmware: nil)
+        builder = OutputReportBuilder(features: features)
+        limiter = RateLimiter(maxPerSecond: options.maxOutputReportsPerSecond, burst: 3)
+    }
+
+    package func receive(_ bytes: [UInt8]) {
+        guard isOpen, !closing else { return }
+        handleInput(id: bytes.first, data: Data(bytes), timestamp: .now)
     }
 
     // MARK: Open / close
@@ -184,16 +206,24 @@ public actor DeviceConnection {
     /// restored), releases the device (ending an exclusive seize) and ends all
     /// input streams.
     public func close() async {
-        guard isOpen, !closing else { return }
+        if let closeTask { await closeTask.value; return }
+        guard isOpen else { return }
+        closing = true
+        let task = Task { await finishClose() }
+        closeTask = task
+        await task.value
+    }
+
+    private func finishClose() async {
         // Stop every other source of output before the neutral report, so
         // nothing (a deferred flush, the re-assert timer, a concurrent apply)
         // can land after it while the send is suspended.
-        closing = true
         cancelFlush()
         reassertTask?.cancel()
         reassertTask = nil
+        let reset = neutralOutput
         desired = OutputState()
-        if await sendNeutral() != nil {
+        if await sendNeutral(reset) != nil {
             options.journal?.markClean(journalKey)
         }
         // On failure the journal stays dirty so the next open neutralises.
@@ -209,17 +239,34 @@ public actor DeviceConnection {
         cancelFlush()
         // Reset before the await so a patch applied while the send is in flight
         // is kept rather than wiped afterwards.
+        let reset = neutralOutput
         desired = OutputState()
-        guard let seq = await sendNeutral() else { return }
+        guard let seq = await sendNeutral(reset) else { return }
         // Only mark clean if nothing else was sent after the neutral report.
         if seq == outputSequence { options.journal?.markClean(journalKey) }
     }
 
     /// Sends the neutral report, ignoring rumble suppression (neutral must
     /// always stop the motors). Returns its output sequence number on success.
-    private func sendNeutral() async -> UInt64? {
+    private var neutralOutput: OutputState {
+        var reset = OutputState.neutral(restoreLightbar: options.restoreLightbar)
+        if desired.playerLEDs != nil { reset.playerLEDs = PlayerLEDs(rawValue: 0) }
+        if desired.playerLEDBrightness != nil { reset.playerLEDBrightness = .high }
+        if desired.muteLED != nil { reset.muteLED = .off }
+        if desired.micMuted != nil { reset.micMuted = false }
+        if let audio = desired.audio {
+            reset.audio = AudioSettings(
+                headphoneVolume: audio.headphoneVolume == nil ? nil : 0,
+                speakerVolume: audio.speakerVolume == nil ? nil : 0,
+                micVolume: audio.micVolume == nil ? nil : 0,
+                outputPath: audio.outputPath == nil ? nil : .headphones)
+        }
+        return reset
+    }
+
+    private func sendNeutral(_ reset: OutputState? = nil) async -> UInt64? {
         do {
-            return try await sendNow(.neutral(restoreLightbar: options.restoreLightbar), honorSuppression: false)
+            return try await sendNow(reset ?? neutralOutput, honorSuppression: false)
         } catch {
             return nil
         }
@@ -237,6 +284,9 @@ public actor DeviceConnection {
         monitorTask = nil
         monitor?.cancel()
         client = nil
+        let io = testIO
+        testIO = nil
+        await io?.close()
         await monitor?.value
     }
 
@@ -244,7 +294,7 @@ public actor DeviceConnection {
 
     /// A new subscription to decoded input. Each call returns an independent stream.
     public func inputEvents(bufferingNewest n: Int = 64) -> AsyncStream<InputEvent> {
-        let (stream, cont) = AsyncStream<InputEvent>.makeStream(bufferingPolicy: .bufferingNewest(n))
+        let (stream, cont) = AsyncStream<InputEvent>.makeStream(bufferingPolicy: .bufferingNewest(max(1, n)))
         guard isOpen else {
             cont.finish()
             return stream
@@ -262,7 +312,7 @@ public actor DeviceConnection {
     /// EXPERIMENTAL (gate 6): every input report as received, including report
     /// IDs the parser does not understand (for example a microphone uplink).
     public func rawInputReports(bufferingNewest n: Int = 256) -> AsyncStream<RawInputReport> {
-        let (stream, cont) = AsyncStream<RawInputReport>.makeStream(bufferingPolicy: .bufferingNewest(n))
+        let (stream, cont) = AsyncStream<RawInputReport>.makeStream(bufferingPolicy: .bufferingNewest(max(1, n)))
         guard isOpen, !closing else {
             cont.finish()
             return stream
@@ -309,6 +359,7 @@ public actor DeviceConnection {
     }
 
     private func handleInput(id: UInt8?, data: Data, timestamp: SuspendingClock.Instant) {
+        guard isOpen, !closing else { return }
         var bytes = [UInt8](data)
         if let id, bytes.first != id { bytes.insert(id, at: 0) }
         guard let rid = bytes.first else { return }
@@ -331,10 +382,14 @@ public actor DeviceConnection {
     /// Bluetooth CRC verified and stripped.
     public func getFeatureReport(_ id: UInt8, length: Int?) async throws(TransportError) -> [UInt8] {
         guard let rid = HIDReportID(rawValue: id) else { throw .notSupported("report ID 0") }
-        guard let client else { throw .closed }
+        guard isOpen, !closing else { throw .closed }
         let data: Data
         do {
-            data = try await client.dispatchGetReportRequest(type: .feature, id: rid, timeout: options.requestTimeout)
+            if let testIO {
+                data = Data(try await testIO.getFeature(id))
+            } else if let client {
+                data = try await client.dispatchGetReportRequest(type: .feature, id: rid, timeout: options.requestTimeout)
+            } else { throw TransportError.closed }
         } catch {
             throw Self.map(error)
         }
@@ -342,12 +397,9 @@ public actor DeviceConnection {
         // include the trailing CRC on Bluetooth (the Linux driver reads the CRC
         // at length - 4), so they are passed through unchanged. Inflating them
         // would defeat normalize()'s stripped-ID detection.
-        let bytes = FeatureReportFraming.normalize([UInt8](data), reportID: id, expectedLength: length)
         do {
-            return try FeatureReportFraming.unwrap(bytes, transport: info.transport)
+            return try FeatureReportFraming.decode([UInt8](data), reportID: id, expectedLength: length, transport: info.transport)
         } catch {
-            // Some stacks strip the CRC already; accept the raw bytes if they parse.
-            if info.transport == .bluetooth, case .badCRC = error { return bytes }
             throw .parse(error)
         }
     }
@@ -486,13 +538,16 @@ public actor DeviceConnection {
 
     private func setReport(_ report: [UInt8]) async throws(TransportError) {
         guard let id = report.first, let rid = HIDReportID(rawValue: id) else { throw .notSupported("empty report") }
-        guard let client else { throw .closed }
+        guard isOpen else { throw .closed }
         if info.transport == .bluetooth, !CRC32.verify(report, prefix: .output) {
             throw .notSupported("refusing to send a Bluetooth report without a valid CRC")
         }
         do {
-            try await client.dispatchSetReportRequest(
-                type: .output, id: rid, data: Data(report), timeout: options.requestTimeout)
+            if let testIO { try await testIO.send(report) }
+            else if let client {
+                try await client.dispatchSetReportRequest(
+                    type: .output, id: rid, data: Data(report), timeout: options.requestTimeout)
+            } else { throw TransportError.closed }
         } catch {
             throw Self.map(error)
         }

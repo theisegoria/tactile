@@ -18,7 +18,10 @@ public struct HIDReportInfo: Sendable, Hashable, Codable, CustomStringConvertibl
     public var usagePage: UInt16?
 
     /// Bytes on the wire including the report-ID byte (when IDs are used).
-    public var byteLength: Int { (bitLength + 7) / 8 + (reportID == 0 ? 0 : 1) }
+    public var byteLength: Int {
+        let bits = max(0, bitLength)
+        return bits / 8 + (bits % 8 == 0 ? 0 : 1) + (reportID == 0 ? 0 : 1)
+    }
     public var isVendorDefined: Bool { (usagePage ?? 0) >= 0xFF00 }
 
     public var description: String {
@@ -31,6 +34,7 @@ public struct HIDDescriptor: Sendable, Hashable, Codable {
     public enum ParseError: Error, Sendable, Equatable {
         case truncated(offset: Int)
         case popWithoutPush(offset: Int)
+        case sizeOverflow(offset: Int)
     }
 
     public var reports: [HIDReportInfo]
@@ -82,9 +86,12 @@ public struct HIDDescriptor: Sendable, Hashable, Codable {
             case 0x80, 0x90, 0xB0:
                 let kind: HIDReportKind = tag == 0x80 ? .input : tag == 0x90 ? .output : .feature
                 let key = "\(kind.rawValue)-\(g.reportID)"
-                let add = max(0, g.reportSize) * max(0, g.reportCount)
+                let (add, overflow) = g.reportSize.multipliedReportingOverflow(by: g.reportCount)
+                guard !overflow else { throw .sizeOverflow(offset: i) }
                 if var r = bits[key] {
-                    r.bitLength += add
+                    let (total, overflow) = r.bitLength.addingReportingOverflow(add)
+                    guard !overflow else { throw .sizeOverflow(offset: i) }
+                    r.bitLength = total
                     bits[key] = r
                 } else {
                     bits[key] = HIDReportInfo(kind: kind, reportID: g.reportID, bitLength: add, usagePage: g.usagePage)

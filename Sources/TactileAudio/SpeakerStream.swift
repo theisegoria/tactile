@@ -43,12 +43,14 @@ public final class SpeakerStream: Sendable {
 
     /// Plays `url` in real time. Returns when done or when the task is cancelled.
     public func play(url: URL, gain: Float = 1) async throws -> SpeakerStreamStats {
+        try format.validate()
         let source = try PCMFileSource(url: url, sampleRate: format.sampleRate, channels: format.channels)
         return try await play(chunks: source.chunks(frames: format.framesPerPacket, gain: gain))
     }
 
     /// Plays pre-chunked interleaved PCM (each chunk one packet's worth).
     public func play<S: Sequence>(chunks: S) async throws -> SpeakerStreamStats where S.Element == [Float] {
+        guard framing.isValid else { throw SpeakerAudioReportBuilder.BuildError.badFraming("invalid speaker framing") }
         let encoder = try OpusEncoder(format: format, bitRate: bitRate)
         var builder = SpeakerAudioReportBuilder(framing: framing)
         var stats = SpeakerStreamStats()
@@ -58,22 +60,25 @@ public final class SpeakerStream: Sendable {
         var k = 0
         func deliver(_ packets: [[UInt8]]) async throws {
             for p in packets {
+                try Task.checkCancellation()
+                let deadline = start + period * k
+                k += 1
+                if clock.now < deadline { try await clock.sleep(until: deadline) }
                 stats.largestPacket = max(stats.largestPacket, p.count)
                 let report: [UInt8]
                 do {
                     report = try builder.build(opusPacket: p)
-                } catch {
+                } catch SpeakerAudioReportBuilder.BuildError.packetTooLarge {
                     stats.packetsDroppedOversize += 1
                     continue
                 }
-                let deadline = start + period * k
-                k += 1
-                if clock.now < deadline { try await clock.sleep(until: deadline) }
                 let late = clock.now - deadline
                 stats.maxLatenessMs = max(stats.maxLatenessMs, Double(late.components.attoseconds) / 1e15 + Double(late.components.seconds) * 1000)
                 do {
                     try await send(report)
                     stats.packetsSent += 1
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     stats.sendFailures += 1
                     stats.lastError = "\(error)"
@@ -117,14 +122,19 @@ struct PCMFileSource {
         }
         var planar: [[Float]] = Array(repeating: [], count: Int(target.channelCount))
         var done = false
+        var readError: (any Error)?
         while !done {
+            try Task.checkCancellation()
             let outCap = AVAudioFrameCount(Double(inCap) * target.sampleRate / file.processingFormat.sampleRate) + 64
             guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: outCap) else { break }
             var err: NSError?
             let status = conv.convert(to: out, error: &err) { _, s in
+                guard file.framePosition < file.length else { s.pointee = .endOfStream; return nil }
                 do {
-                    try file.read(into: inBuf, frameCount: inCap)
+                    let remaining = AVAudioFrameCount(min(Int64(inCap), file.length - file.framePosition))
+                    try file.read(into: inBuf, frameCount: remaining)
                 } catch {
+                    readError = error
                     s.pointee = .endOfStream
                     return nil
                 }
@@ -132,6 +142,7 @@ struct PCMFileSource {
                 s.pointee = .haveData
                 return inBuf
             }
+            if let readError { throw readError }
             if let d = out.floatChannelData {
                 for c in 0..<planar.count { planar[c] += UnsafeBufferPointer(start: d[c], count: Int(out.frameLength)) }
             }

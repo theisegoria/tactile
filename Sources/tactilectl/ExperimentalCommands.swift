@@ -32,6 +32,83 @@ enum ExperimentalCommands {
         return out
     }
 
+    /// Validate research controls before discovery or any controller output.
+    static func validate(_ command: String, _ args: [String]) throws {
+        let flags: Set<String>
+        switch command {
+        case "audio": flags = ["--headphone", "--speaker", "--mic", "--path"]
+        case "speaker": flags = ["--gain", "--bitrate", "--report-length", "--speaker", "--path"]
+        case "mic-record": flags = ["--report", "--toc", "--length", "--rate", "--channels"]
+        case "features": flags = ["--label", "--save"]
+        default: return
+        }
+        var seen = Set<String>()
+        var index = 0
+        while index < args.count {
+            let value = args[index]
+            if value.hasPrefix("--") {
+                guard flags.contains(value) else { throw CLIError("unknown option '\(value)'") }
+                guard seen.insert(value).inserted else { throw CLIError("duplicate option '\(value)'") }
+                guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else {
+                    throw CLIError("\(value) needs a value")
+                }
+                index += 1
+            }
+            index += 1
+        }
+        _ = try byte(args, "--headphone", max: 127)
+        _ = try byte(args, "--speaker")
+        _ = try byte(args, "--mic", max: 64)
+        if let path = option(args, "--path") {
+            let allowed = command == "speaker" ? ["speaker", "headphones"]
+                : ["speaker", "headphones", "headphone-left", "headphone-left-speaker"]
+            guard allowed.contains(path) else { throw CLIError("invalid --path '\(path)'") }
+        }
+        if command == "speaker" {
+            guard !positional(args, valueFlags: flags).isEmpty else { throw CLIError("speaker requires an audio file") }
+            _ = try integer(args, "--bitrate", range: 6000...512000)
+            _ = try integer(args, "--report-length", range: 8...1024)
+            if let raw = option(args, "--gain") {
+                guard let value = Float(raw), value.isFinite, (0...8).contains(value) else { throw CLIError("--gain must be 0…8") }
+            }
+        }
+        if command == "mic-record" {
+            let positional = positional(args, valueFlags: flags)
+            guard !positional.isEmpty else { throw CLIError("mic-record requires an output WAV path") }
+            if positional.count > 1 { _ = try Commands.parseSeconds(positional[1], "mic-record seconds") }
+            _ = try microphoneFormat(args)
+            _ = try uplinkLayout(args, trailerBytes: 4)
+        }
+    }
+
+    static func integer(_ args: [String], _ flag: String, range: ClosedRange<Int>) throws -> Int? {
+        guard let raw = option(args, flag) else { return nil }
+        guard let value = Int(raw), range.contains(value) else { throw CLIError("\(flag) must be \(range.lowerBound)…\(range.upperBound)") }
+        return value
+    }
+
+    static func microphoneFormat(_ args: [String]) throws -> OpusStreamFormat {
+        let rate: Double
+        if let raw = option(args, "--rate") {
+            guard let parsed = Double(raw) else { throw CLIError("--rate requires a sample rate") }
+            rate = parsed
+        } else { rate = 24000 }
+        let channels = try integer(args, "--channels", range: 1...2) ?? 1
+        let format = OpusStreamFormat(sampleRate: rate, channels: channels)
+        try format.validate()
+        return format
+    }
+
+    static func uplinkLayout(_ args: [String], trailerBytes: Int) throws -> UplinkExtractor? {
+        let id = try byte(args, "--report")
+        let toc = try integer(args, "--toc", range: 1...65535)
+        let length = try integer(args, "--length", range: 1...65534)
+        guard id != nil || toc != nil || length != nil else { return nil }
+        guard let id, id != 0, let toc else { throw CLIError("supply --report and --toc together") }
+        if let length, length >= toc { throw CLIError("--length must precede --toc") }
+        return UplinkExtractor(reportID: id, tocOffset: toc, lengthOffset: length, trailerBytes: trailerBytes)
+    }
+
     // MARK: descriptor
 
     static func descriptor(_ c: Controller) {
@@ -127,17 +204,15 @@ enum ExperimentalCommands {
         }
         let seconds = try pos.dropFirst().first.map { try Commands.parseSeconds($0, "mic-record seconds") } ?? 10
         let extractor: UplinkExtractor
-        if let rid = try byte(a, "--report"), let toc = option(a, "--toc").flatMap(Int.init) {
-            extractor = UplinkExtractor(reportID: rid, tocOffset: toc, lengthOffset: option(a, "--length").flatMap(Int.init),
-                                        trailerBytes: c.transport == .bluetooth ? 4 : 0)
+        let format = try microphoneFormat(a)
+        if let layout = try uplinkLayout(a, trailerBytes: c.transport == .bluetooth ? 4 : 0) {
+            extractor = layout
         } else {
             guard let best = try await micScan(c, ["5"]) else { throw CLIError("no uplink found; pass --report/--toc explicitly") }
             extractor = UplinkExtractor(best, trailerBytes: c.transport == .bluetooth ? 4 : 0)
         }
-        let rate = option(a, "--rate").flatMap(Double.init) ?? 24000
-        let channels = option(a, "--channels").flatMap(Int.init) ?? 1
         print("recording \(seconds) s from report 0x\(String(extractor.reportID, radix: 16)) → \(out)")
-        let stats = try await c.recordMicUplink(extractor: extractor, format: OpusStreamFormat(sampleRate: rate, channels: channels),
+        let stats = try await c.recordMicUplink(extractor: extractor, format: format,
                                                 to: URL(fileURLWithPath: out), duration: .milliseconds(Int(seconds * 1000)))
         print(stats)
     }

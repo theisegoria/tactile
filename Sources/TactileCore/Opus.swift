@@ -77,26 +77,33 @@ public struct UplinkScanner: Sendable {
     public var trailerBytes = 4
     private var byID: [UInt8: [[UInt8]]] = [:]
     private let cap = 400
+    private var counts: [UInt8: Int] = [:]
 
     public init() {}
 
     public mutating func add(_ report: [UInt8]) {
         guard let id = report.first, !ignoredReportIDs.contains(id) else { return }
+        counts[id, default: 0] += 1
         var list = byID[id, default: []]
         if list.count < cap { list.append(report) }
         byID[id] = list
     }
 
-    public var reportCounts: [UInt8: Int] { byID.mapValues(\.count) }
+    public var reportCounts: [UInt8: Int] { counts }
 
     /// Candidates ordered by confidence. A real Opus stream from one encoder keeps
     /// the same TOC byte (same mode, bandwidth, frame size, channels) packet after
     /// packet, while ordinary report fields vary or sit at zero.
     public func candidates() -> [UplinkCandidate] {
         var out: [UplinkCandidate] = []
-        for (id, reports) in byID where reports.count >= minSamples {
+        guard maxOffset > 1, trailerBytes >= 0 else { return [] }
+        for (id, reports) in byID where reports.count >= max(1, minSamples) {
             let len = reports.map(\.count).max() ?? 0
-            for off in 1..<min(maxOffset, len) {
+            let end = min(maxOffset, len)
+            guard end > 1 else { continue }
+            for off in 1..<end {
+                // A candidate must fit every sampled report, not just the longest.
+                guard reports.allSatisfy({ trailerBytes < $0.count && off < $0.count - trailerBytes }) else { continue }
                 var counts: [UInt8: Int] = [:]
                 for r in reports where off < r.count { counts[r[off], default: 0] += 1 }
                 guard let (toc, n) = counts.max(by: { $0.value < $1.value }), toc != 0, toc != 0xFF else { continue }
@@ -118,7 +125,7 @@ public struct UplinkScanner: Sendable {
                 var lengthOffset: Int?
                 if off >= 1 {
                     let lens = reports.map { Int($0[off - 1]) }
-                    let fits = lens.allSatisfy { $0 > 0 && off + $0 <= len }
+                    let fits = zip(reports, lens).allSatisfy { r, n in n > 0 && n <= r.count - trailerBytes - off }
                     if fits && Set(lens).count > 1 { lengthOffset = off - 1 }
                 }
                 out.append(UplinkCandidate(reportID: id, reportLength: len, tocOffset: off, lengthOffset: lengthOffset,
@@ -150,16 +157,17 @@ public struct UplinkExtractor: Sendable, Hashable, Codable {
 
     /// The Opus packet in `report`, or nil if the report is not an uplink report.
     public func packet(from report: [UInt8]) -> [UInt8]? {
-        guard report.first == reportID, tocOffset < report.count else { return nil }
-        let end = max(tocOffset, report.count - trailerBytes)
-        if let lo = lengthOffset, lo < report.count {
+        guard report.first == reportID, trailerBytes >= 0, trailerBytes <= report.count,
+              tocOffset >= 1, tocOffset < report.count - trailerBytes else { return nil }
+        let end = report.count - trailerBytes
+        if let lo = lengthOffset {
+            guard lo >= 1, lo < tocOffset else { return nil }
             let n = Int(report[lo])
-            guard n > 0, tocOffset + n <= end else { return nil }
+            guard n > 0, n <= end - tocOffset else { return nil }
             return Array(report[tocOffset..<(tocOffset + n)])
         }
-        // No length field: take everything up to the trailer, minus zero padding.
-        var e = end
-        while e > tocOffset + 1, report[e - 1] == 0 { e -= 1 }
-        return Array(report[tocOffset..<e])
+        // Without a length field padding cannot be distinguished from packet data.
+        // Preserve trailing zero bytes; an Opus packet may legitimately end in zero.
+        return Array(report[tocOffset..<end])
     }
 }

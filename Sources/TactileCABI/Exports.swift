@@ -90,10 +90,14 @@ public func tactile_context_create(_ options: UnsafePointer<tactile_options>?, _
     if let options {
         let size = Int(options.pointee.struct_size)
         if size >= MemoryLayout<tactile_options>.offset(of: \.mode)! + 4 {
+            guard options.pointee.mode == Int32(TACTILE_MODE_EXCLUSIVE.rawValue)
+                    || options.pointee.mode == Int32(TACTILE_MODE_SHARED.rawValue) else { return EINVAL }
             o.mode = options.pointee.mode == Int32(TACTILE_MODE_EXCLUSIVE.rawValue) ? .exclusive : .shared
         }
-        if size >= MemoryLayout<tactile_options>.size, options.pointee.max_output_reports_per_second > 0 {
-            o.maxOutputReportsPerSecond = options.pointee.max_output_reports_per_second
+        if size >= MemoryLayout<tactile_options>.size {
+            let rate = options.pointee.max_output_reports_per_second
+            guard rate.isFinite, rate >= 0 else { return EINVAL }
+            if rate > 0 { o.maxOutputReportsPerSecond = rate }
         }
     }
     let box = ContextBox(options: o)
@@ -348,7 +352,7 @@ public func tactile_haptics_play(_ p: OpaquePointer?, _ effect: Int32, _ intensi
 
 @_cdecl("tactile_haptics_write_pcm")
 public func tactile_haptics_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePointer<Float>?, _ frames: Int32, _ channels: Int32, _ rate: Double) -> Int32 {
-    guard let b = controller(p), let samples, frames >= 0, channels > 0, rate > 0 else { return EINVAL }
+    guard let b = controller(p), let samples, frames >= 0, channels > 0, rate.isFinite, rate > 0 else { return EINVAL }
     guard b.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     let arr = Array(UnsafeBufferPointer(start: samples, count: Int(frames) * Int(channels)))
     return b.writePCM(arr, channels: Int(channels), rate: rate)

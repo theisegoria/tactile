@@ -428,3 +428,55 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         #expect(sink.reports.withLock { $0.count } <= 10)
     }
 }
+
+/// A deliberately stalled sink exposes the interval between stop's cancellation
+/// and the old thread's exit; a concurrent start must not enter submit twice.
+private final class StalledSink: HapticsReportSink, Sendable {
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    func waitUntilEntered() -> Bool { entered.wait(timeout: .now() + 1) == .success }
+    let calls = Mutex(0)
+    let overlapping = Mutex(false)
+    private let active = Mutex(false)
+    func submit(_ report: [UInt8], completion: @escaping @Sendable (Bool) -> Void) {
+        let wasActive = active.withLock { value in let old = value; value = true; return old }
+        if wasActive { overlapping.withLock { $0 = true } }
+        let number = calls.withLock { $0 += 1; return $0 }
+        if number == 1 { entered.signal(); _ = release.wait(timeout: .now() + 2) }
+        active.withLock { $0 = false }
+        completion(true)
+    }
+}
+
+@Suite struct ConcurrentPumpTests {
+    @Test func startWaitsForStoppedRunToLeaveSubmit() async throws {
+        let sink = StalledSink()
+        let pump = HapticsPump(mixer: HapticsMixer(), sink: sink, sendWhileIdle: true)
+        pump.start()
+        let didEnter = await Task.detached { sink.waitUntilEntered() }.value
+        #expect(didEnter)
+        let stopping = Task.detached { pump.stop() }
+        for _ in 0..<100 where pump.isRunning { try await Task.sleep(for: .milliseconds(1)) }
+        let starting = Task.detached { pump.start() }
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(sink.calls.withLock { $0 } == 1)
+        sink.release.signal()
+        await stopping.value
+        await starting.value
+        try await Task.sleep(for: .milliseconds(40))
+        pump.stop()
+        #expect(!sink.overlapping.withLock { $0 })
+        #expect(sink.calls.withLock { $0 } > 1)
+    }
+
+    @Test func concurrentStartStopStress() async {
+        let pump = HapticsPump(mixer: HapticsMixer(), sink: CountingSink(), sendWhileIdle: true)
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<6 {
+                group.addTask { for _ in 0..<20 { pump.start(); pump.stop() } }
+            }
+        }
+        pump.stop()
+        #expect(!pump.isRunning)
+    }
+}

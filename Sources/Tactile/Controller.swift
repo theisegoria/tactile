@@ -87,6 +87,12 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
             // Close a still-installed old instance before writing to the new one:
             // its neutral report reaches the same physical controller.
             if let liveOld, liveOld !== c { await liveOld.close() }
+            guard c.options.restoreOutputOnReconnect else {
+                state.withLock { s in s.hapticsWanted = false; s.rumble = .off }
+                haptics.stopAll()
+                await c.neutralize()
+                return
+            }
             if let previous, previous != OutputState() {
                 try? await c.apply(previous)
             }
@@ -270,8 +276,8 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
         try await gate.run { () async throws(TransportError) in
             let (installed, framing) = state.withLock { ($0.pump != nil, $0.framing) }
             if !installed { try await startHapticsLocked(framing: framing) }
+            haptics.play(effect, side: side)
         }
-        haptics.play(effect, side: side)
     }
 
     public func hapticsMetrics() -> HapticsMetrics? {

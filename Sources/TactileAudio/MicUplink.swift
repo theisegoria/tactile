@@ -57,9 +57,10 @@ public final class MicUplinkDecoder: @unchecked Sendable {
             AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
         ]
         let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
-        let deadline = ContinuousClock.now + duration
-        for try await report in reports {
-            if ContinuousClock.now >= deadline { break }
+        let bounded = DeadlineStream(reports, duration: duration)
+        defer { bounded.cancel() }
+        for try await report in bounded.stream {
+            try Task.checkCancellation()
             guard let pcm = process(report), !pcm.isEmpty else { continue }
             let ch = format.channels, frames = pcm.count / ch
             guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(frames)),
@@ -68,6 +69,7 @@ public final class MicUplinkDecoder: @unchecked Sendable {
             for f in 0..<frames { for c in 0..<ch { d[c][f] = pcm[f * ch + c] } }
             try file.write(from: buf)
         }
+        try Task.checkCancellation()
         return stats
     }
 }

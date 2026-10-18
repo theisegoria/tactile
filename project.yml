@@ -1,0 +1,102 @@
+name: TactileLab
+options:
+  bundleIdPrefix: dev.tactile
+  deploymentTarget:
+    macOS: '27.0'
+  xcodeVersion: '27.1'
+  createIntermediateGroups: true
+packages:
+  Tactile:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: '27.0'
+    ARCHS: arm64
+    ENABLE_HARDENED_RUNTIME: YES
+    DEVELOPMENT_TEAM: Q73Q75XA2B
+    CODE_SIGN_STYLE: Manual
+  configs:
+    Debug:
+      CODE_SIGN_IDENTITY: '-'
+    Release:
+      CODE_SIGN_IDENTITY: Developer ID Application
+      SWIFT_COMPILATION_MODE: wholemodule
+targets:
+  TactileLab:
+    type: application
+    platform: macOS
+    sources: [App/TactileLab]
+    dependencies:
+      - package: Tactile
+        product: Tactile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab
+        PRODUCT_NAME: Tactile Lab
+        ENABLE_APP_SANDBOX: NO
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+    info:
+      path: App/Support/Info.plist
+      properties:
+        CFBundleDisplayName: Tactile Lab
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.utilities
+        NSMicrophoneUsageDescription: Tactile Lab uses your Mac microphone only when you start microphone-driven haptics.
+        NSBluetoothAlwaysUsageDescription: Tactile Lab tests a Bluetooth DualSense controller you select.
+        NSSupportsAutomaticTermination: false
+        NSHighResolutionCapable: true
+    entitlements:
+      path: App/Support/TactileLab.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+  TactileLabTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [App/TactileLabTests]
+    dependencies:
+      - target: TactileLab
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab.tests
+  TactileLabUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [App/TactileLabUITests]
+    dependencies:
+      - target: TactileLab
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab.uitests
+schemes:
+  TactileLab:
+    build:
+      targets:
+        TactileLab: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [TactileLabTests, TactileLabUITests]
+    archive:
+      config: Release
+  TactileLabTests:
+    build:
+      targets:
+        TactileLab: all
+        TactileLabTests: [test]
+    test:
+      targets: [TactileLabTests]
+  TactileLabUITests:
+    build:
+      targets:
+        TactileLab: all
+        TactileLabUITests: [test]
+    test:
+      targets: [TactileLabUITests]

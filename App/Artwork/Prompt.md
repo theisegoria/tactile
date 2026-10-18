@@ -1,0 +1,7 @@
+# Tactile Lab icon artwork
+
+Generated with the built-in Image Gen tool on 18 October 2026. Original output retained as `TactileLab-source.png`, with transparency. No external brand artwork was supplied.
+
+## Original prompt
+
+Create original production app-icon foreground artwork for a native macOS application called Tactile Lab. No words, letters, numbers, logos, trademarks, or outer rounded-square tile. Transparent background. A single bold, symmetric, immediately recognizable modern wireless game controller, viewed straight on with very slight top-down depth, floating alone in the center. Sculpted warm ivory body, two short rounded ergonomic grips, deep midnight blue central insert, two small dark analog sticks, simple circular face buttons and simple plus-shaped D-pad, clean and geometrically balanced. A fine vivid electric-cyan light strip accents the upper central touchpad. Above the controller a small elegant pair of cyan wireless arcs; near each grip one very subtle short vibration stroke, kept uncluttered. Premium macOS icon aesthetic: restrained soft volumetric shading, broad smooth forms, strong contrast and generous negative space, clear at 32px. Front subject spans about 76 percent of the square canvas width, centered vertically. No cast shadow outside object, no background scenery, no border. Output a high-resolution square RGBA PNG suitable as an Icon Composer foreground layer. The device should feel like an original generic dual-stick controller, not a photograph or reproduction of Sony branding.

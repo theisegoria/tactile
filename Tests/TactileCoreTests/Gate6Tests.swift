@@ -165,7 +165,7 @@ import Testing
         bad[3] = 200
         #expect(e.packet(from: bad) == nil)
         let noLen = UplinkExtractor(reportID: 0x35, tocOffset: 4, lengthOffset: nil, trailerBytes: 0)
-        #expect(noLen.packet(from: [0x35, 0, 0, 0, 0x60, 1, 2, 0, 0]) == [0x60, 1, 2])
+        #expect(noLen.packet(from: [0x35, 0, 0, 0, 0x60, 1, 2, 0, 0]) == [0x60, 1, 2, 0, 0])
     }
 }
 

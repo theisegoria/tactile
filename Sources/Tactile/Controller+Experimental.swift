@@ -59,11 +59,11 @@ extension Controller {
         var scanner = UplinkScanner()
         scanner.trailerBytes = transport == .bluetooth ? 4 : 0
         let reports = await rawInputReports()
-        let deadline = ContinuousClock.now + duration
-        for await r in reports {
-            scanner.add(r.bytes)
-            if ContinuousClock.now >= deadline { break }
-        }
+        let bounded = DeadlineStream(reports, duration: duration)
+        defer { bounded.cancel() }
+        do {
+            for try await r in bounded.stream { scanner.add(r.bytes) }
+        } catch { /* A scan returns the observations collected before cancellation. */ }
         return (scanner.candidates(), scanner.reportCounts)
     }
 
@@ -73,7 +73,7 @@ extension Controller {
                                 to url: URL, duration: Duration) async throws -> MicUplinkStats {
         let decoder = try MicUplinkDecoder(extractor: extractor, format: format)
         let raw = await rawInputReports()
-        let bytes = AsyncStream<[UInt8]> { cont in
+        let bytes = AsyncStream<[UInt8]>(bufferingPolicy: .bufferingNewest(256)) { cont in
             let t = Task {
                 for await r in raw { cont.yield(r.bytes) }
                 cont.finish()
@@ -94,6 +94,7 @@ extension Controller {
             return snap
         }
         for r in d.reports(.feature) where r.reportID != 0 {
+            guard !Task.isCancelled else { break }
             do {
                 snap.reports[r.reportID] = try await c.getFeatureReport(r.reportID, length: r.byteLength)
             } catch {

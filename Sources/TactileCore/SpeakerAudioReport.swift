@@ -31,9 +31,19 @@ public struct SpeakerAudioFraming: Sendable, Hashable, Codable {
 
     /// Largest Opus packet that fits.
     public var maxPacketBytes: Int {
-        let prefix = lengthPrefix == .none ? 0 : lengthPrefix == .u8 ? 1 : 2
-        let cap = reportLength - payloadOffset - prefix - (crc ? 4 : 0)
-        return lengthPrefix == .u8 ? min(cap, 255) : max(cap, 0)
+        guard isValid else { return 0 }
+        let cap = reportLength - payloadOffset - prefixBytes - (crc ? 4 : 0)
+        return min(cap, lengthPrefix == .u8 ? 255 : 65_535)
+    }
+
+    var prefixBytes: Int { lengthPrefix == .none ? 0 : lengthPrefix == .u8 ? 1 : 2 }
+
+    /// A bounded HID report with room for the complete header, prefix and CRC.
+    public var isValid: Bool {
+        guard reportID != 0, (1...65_535).contains(reportLength),
+              payloadOffset >= 1, payloadOffset <= reportLength else { return false }
+        return reportLength - payloadOffset >= prefixBytes + (crc ? 4 : 0)
+            && (!crc || reportLength > 4)
     }
 }
 
@@ -53,7 +63,7 @@ public struct SpeakerAudioReportBuilder: Sendable {
 
     public mutating func build(opusPacket p: [UInt8]) throws(BuildError) -> [UInt8] {
         let f = framing
-        guard f.reportLength >= f.payloadOffset + (f.crc ? 5 : 1), f.payloadOffset >= 1 else {
+        guard f.isValid else {
             throw .badFraming("reportLength \(f.reportLength) too small for payloadOffset \(f.payloadOffset)")
         }
         guard p.count <= f.maxPacketBytes else { throw .packetTooLarge(size: p.count, max: f.maxPacketBytes) }

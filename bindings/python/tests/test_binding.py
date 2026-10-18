@@ -60,6 +60,22 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(t.TriggerEffect.multiple_position_feedback([0, 0, 8, 6, 4, 3, 1, 1, 1, 1]).hex(),
                          "21 fc 03 c0 3b 01 00 00 00 00 00")
 
+    def test_invalid_pcm_rejected_before_native_call(self):
+        controller = t.Controller(0)
+        for channels, rate, samples in [(0, 48000, []), (-1, 48000, []), (2, 48000, [0]), (1, float("nan"), []), (1, float("inf"), [])]:
+            with self.assertRaises(ValueError):
+                controller.write_pcm(samples, channels, rate)
+
+    def test_integer_arguments_do_not_wrap(self):
+        with self.assertRaises(ValueError):
+            t.TriggerEffect.feedback(2**32 + 3, 5)
+        with self.assertRaises(ValueError):
+            t.TriggerEffect.multiple_position_feedback([2**32] * 10)
+        with self.assertRaises(ValueError):
+            t.Controller(0).set_lightbar(256, 0, 0)
+        with self.assertRaises(ValueError):
+            t.Controller(0).set_rumble(-1, 0)
+
     def test_invalid_raises(self):
         with self.assertRaises(t.TactileError) as cm:
             t.TriggerEffect.weapon(1, 6, 8)

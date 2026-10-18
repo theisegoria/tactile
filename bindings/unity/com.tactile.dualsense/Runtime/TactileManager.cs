@@ -70,7 +70,9 @@ namespace Tactile
             lock (gate)
             {
                 if (handle == IntPtr.Zero) return (int)Result.NotConnected;
-                return Native.tactile_haptics_write_pcm(handle, interleaved, interleaved.Length / Math.Max(channels, 1), channels, sampleRate);
+                if (interleaved == null || channels <= 0 || sampleRate <= 0 || interleaved.Length % channels != 0)
+                    throw new ArgumentException("PCM requires complete frames, positive channels and sample rate.");
+                return Native.tactile_haptics_write_pcm(handle, interleaved, interleaved.Length / channels, channels, sampleRate);
             }
         }
 
@@ -97,8 +99,16 @@ namespace Tactile
         public static TriggerEffect Weapon(int start, int end, int strength) => Build(e => (Native.tactile_trigger_weapon(start, end, strength, ref e), e));
         public static TriggerEffect Vibration(int position, int amplitude, int frequency) => Build(e => (Native.tactile_trigger_vibration(position, amplitude, frequency, ref e), e));
         public static TriggerEffect SlopeFeedback(int sp, int ep, int ss, int es) => Build(e => (Native.tactile_trigger_slope_feedback(sp, ep, ss, es, ref e), e));
-        public static TriggerEffect MultiplePositionFeedback(int[] strengths) => Build(e => (Native.tactile_trigger_multiple_position_feedback(strengths, ref e), e));
-        public static TriggerEffect MultiplePositionVibration(int frequency, int[] amplitudes) => Build(e => (Native.tactile_trigger_multiple_position_vibration(frequency, amplitudes, ref e), e));
+        public static TriggerEffect MultiplePositionFeedback(int[] strengths)
+        {
+            if (strengths == null || strengths.Length != 10) throw new ArgumentException("strengths requires ten entries.", nameof(strengths));
+            return Build(e => (Native.tactile_trigger_multiple_position_feedback(strengths, ref e), e));
+        }
+        public static TriggerEffect MultiplePositionVibration(int frequency, int[] amplitudes)
+        {
+            if (amplitudes == null || amplitudes.Length != 10) throw new ArgumentException("amplitudes requires ten entries.", nameof(amplitudes));
+            return Build(e => (Native.tactile_trigger_multiple_position_vibration(frequency, amplitudes, ref e), e));
+        }
         /// <summary>Unofficial effect.</summary>
         public static TriggerEffect Bow(int start, int end, int strength, int snap) => Build(e => (Native.tactile_trigger_bow(start, end, strength, snap, ref e), e));
         /// <summary>Unofficial effect.</summary>

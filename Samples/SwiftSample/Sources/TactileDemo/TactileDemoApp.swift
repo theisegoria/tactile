@@ -25,6 +25,9 @@ struct TactileDemoApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = DemoModel()
     private var terminating = false
+    private var replied = false
+    private var cleanup: Task<Void, Never>?
+    private var deadline: Task<Void, Never>?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
@@ -32,17 +35,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !terminating else { return .terminateLater }
         terminating = true
         let model = model
-        Task { @MainActor in
-            // Bounded: never hang the quit on a stuck controller.
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await model.shutdown() }
-                group.addTask { try? await Task.sleep(for: .seconds(2)) }
-                await group.next()
-                group.cancelAll()
-            }
-            sender.reply(toApplicationShouldTerminate: true)
+        cleanup = Task {
+            await model.shutdown()
+            finishTermination(sender)
+        }
+        deadline = Task {
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            cleanup?.cancel()
+            finishTermination(sender)
         }
         return .terminateLater
+    }
+
+    private func finishTermination(_ application: NSApplication) {
+        guard !replied else { return }
+        replied = true
+        deadline?.cancel()
+        application.reply(toApplicationShouldTerminate: true)
     }
 }
 
@@ -59,6 +68,10 @@ final class DemoModel {
     var metrics = ""
 
     private let manager = ControllerManager()
+    private var running = false
+    private var generation: UInt64 = 0
+    private var inputTask: Task<Void, Never>?
+    private var outputTask: Task<Void, Never>?
     private let bridge = ControllerBridge()
     /// Addresses reported to the bridge, by controller. `Controller.address`
     /// is already nil when `.disconnected` arrives (the connection is gone),
@@ -66,6 +79,9 @@ final class DemoModel {
     private var bridgedAddresses: [Controller.ID: MACAddress] = [:]
 
     func run() async {
+        guard !running else { return }
+        running = true
+        defer { running = false; inputTask?.cancel() }
         if permission != .granted { InputMonitoringPermission.request() }
         permission = InputMonitoringPermission.status
         bridge.onChange = { [weak self] gc, address in
@@ -74,16 +90,19 @@ final class DemoModel {
         for await event in manager.events() {
             switch event {
             case .connected(let c), .reconnected(let c):
-                controller = c
-                status = "\(c.model.displayName) connected over \(c.transport.rawValue)"
+                guard controller == nil || controller === c else { continue }
+                await select(c)
                 if let a = await c.address {
                     if let old = bridgedAddresses[c.id], old != a { bridge.hidDeviceDisconnected(old) }
                     bridgedAddresses[c.id] = a
                     bridge.hidDeviceConnected(a)
                 }
-                Task { await self.consume(c) }
             case .disconnected(let c):
-                status = "\(c.model.displayName) disconnected"
+                if controller === c {
+                    await select(nil)
+                    status = "\(c.model.displayName) disconnected"
+                    if let next = manager.controllers.first(where: { $0.isConnected }) { await select(next) }
+                }
                 if let a = bridgedAddresses.removeValue(forKey: c.id) { bridge.hidDeviceDisconnected(a) }
             case .failed(_, let error):
                 status = "\(error)"
@@ -95,20 +114,40 @@ final class DemoModel {
     /// Closes every controller, restoring neutral output (triggers off, rumble
     /// off, lightbar and LEDs restored). Called before the app quits.
     func shutdown() async {
-        controller = nil
+        await select(nil)
         for a in bridgedAddresses.values { bridge.hidDeviceDisconnected(a) }
         bridgedAddresses.removeAll()
         await manager.shutdown()
     }
 
-    private func consume(_ c: Controller) async {
+    private func select(_ c: Controller?) async {
+        generation &+= 1
+        let current = generation
+        inputTask?.cancel()
+        outputTask?.cancel()
+        let previous = controller
+        controller = nil
+        input = nil; imu = nil; metrics = ""; gcName = nil
+        await outputTask?.value
+        await previous?.stopHaptics()
+        await previous?.neutralize()
+        guard generation == current else { return }
+        controller = c
+        if let c {
+            status = "\(c.model.displayName) connected over \(c.transport.rawValue)"
+            inputTask = Task { await consume(c, generation: current) }
+        }
+    }
+
+    private func consume(_ c: Controller, generation: UInt64) async {
         let address = await c.address
-        var n = 0
+        var nextPublish = ContinuousClock.now
         for await e in await c.inputEvents() {
-            n += 1
+            guard !Task.isCancelled, self.generation == generation, controller === c else { return }
             if let address { bridge.hidInput(address, buttons: e.state.buttons) }
             // UI at ~30 Hz is plenty.
-            if n % 8 == 0 {
+            if ContinuousClock.now >= nextPublish {
+                nextPublish = .now + .milliseconds(34)
                 input = e.state
                 imu = e.imu
                 metrics = c.hapticsMetrics()?.description ?? ""
@@ -116,28 +155,30 @@ final class DemoModel {
         }
     }
 
-    func setLight(_ color: Color) {
-        guard let c = controller, let rgb = NSColor(color).usingColorSpace(.sRGB) else { return }
-        Task {
-            try? await c.setLightbar(LightbarColor(
-                red: UInt8(rgb.redComponent * 255), green: UInt8(rgb.greenComponent * 255), blue: UInt8(rgb.blueComponent * 255)))
+    private func output(_ operation: @escaping @Sendable (Controller) async throws -> Void) {
+        guard let c = controller else { return }
+        let current = generation
+        let previous = outputTask
+        previous?.cancel()
+        outputTask = Task {
+            await previous?.value
+            guard !Task.isCancelled, generation == current, controller === c else { return }
+            do { try await operation(c) } catch { if !Task.isCancelled { status = String(describing: error) } }
         }
     }
 
-    func trigger(_ effect: TriggerEffect) {
-        guard let c = controller else { return }
-        Task { try? await c.apply(OutputState(leftTrigger: effect, rightTrigger: effect)) }
+    func setLight(_ color: Color) {
+        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+        let color = LightbarColor(red: UInt8(max(0, min(1, rgb.redComponent)) * 255),
+                                 green: UInt8(max(0, min(1, rgb.greenComponent)) * 255),
+                                 blue: UInt8(max(0, min(1, rgb.blueComponent)) * 255))
+        output { try await $0.setLightbar(color) }
     }
 
-    func haptic(_ e: HapticEffect) {
-        guard let c = controller else { return }
-        Task { try? await c.play(e) }
-    }
+    func trigger(_ effect: TriggerEffect) { output { try await $0.apply(OutputState(leftTrigger: effect, rightTrigger: effect)) } }
+    func haptic(_ effect: HapticEffect) { output { try await $0.play(effect) } }
+    func player(_ n: Int) { output { try await $0.setPlayerLEDs(.player(n)) } }
 
-    func player(_ n: Int) {
-        guard let c = controller else { return }
-        Task { try? await c.setPlayerLEDs(.player(n)) }
-    }
 }
 
 struct ContentView: View {

@@ -75,6 +75,9 @@ struct CLI {
             case "features-diff": try ExperimentalCommands.featuresDiff(rest)
             case "haptic-bench": try await HapticBench.run(seconds: try rest.first.map { try Commands.parseSeconds($0, "haptic-bench seconds") } ?? 5)
             default:
+                let known: Set<String> = ["info", "monitor", "light", "leds", "trigger", "rumble", "haptic", "conflicts", "descriptor", "audio", "speaker", "mic-scan", "mic-record", "features"]
+                guard known.contains(cmd) else { throw CLIError("unknown command '\(cmd)'\n\n\(usage)") }
+                try ExperimentalCommands.validate(cmd, rest)
                 let holdSeconds = hold
                 try await withController(options: options) { c in
                     try await run(cmd, rest, c, hold: holdSeconds)
@@ -119,6 +122,7 @@ struct CLI {
         guard let controller = await manager.firstController(timeout: .seconds(4)) else {
             failures.cancel()
             failure = await failures.value
+            await manager.shutdown()
             if InputMonitoringPermission.status != .granted {
                 throw CLIError("Input Monitoring permission is \(InputMonitoringPermission.status.rawValue). Run `tactilectl permission`.")
             }

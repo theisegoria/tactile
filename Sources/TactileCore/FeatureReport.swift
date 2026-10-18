@@ -1,6 +1,21 @@
 // Normalisation of feature reports across transports.
 
 public enum FeatureReportFraming {
+    /// Accepts CRC-stripped Bluetooth framing only at the exact declared
+    /// report length minus four. A full-length bad CRC is never a fallback.
+    public static func decode(_ bytes: [UInt8], reportID: UInt8, expectedLength: Int?, transport: Transport) throws(ParseError) -> [UInt8] {
+        let supportedStrippedLengths: [UInt8: Int] = [0x05: 41, 0x09: 20, 0x20: 64]
+        if transport == .bluetooth, let n = expectedLength, supportedStrippedLengths[reportID] == n,
+           bytes.count == n - 4 || bytes.count == n - 5 {
+            let payload = normalize(bytes, reportID: reportID, expectedLength: n - 4)
+            guard payload.count == n - 4 else {
+                throw .tooShort(reportID: reportID, expected: n - 4, actual: payload.count)
+            }
+            return payload
+        }
+        return try unwrap(normalize(bytes, reportID: reportID, expectedLength: expectedLength), transport: transport)
+    }
+
     /// Bluetooth feature reports carry a trailing CRC-32 seeded with 0xA3.
     /// Verifies and strips it. On USB the bytes are returned unchanged.
     ///

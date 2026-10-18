@@ -36,7 +36,11 @@ final class ErrorCell: Sendable {
 
 final class ControllerBox: @unchecked Sendable {
     let controller: Controller
-    private let latest = Mutex<tactile_input_state?>(nil)
+    private struct Snapshot {
+        var generation: UInt64 = 0
+        var value: tactile_input_state?
+    }
+    private let latest = Mutex(Snapshot())
     private let reportCount = Atomic<UInt64>(0)
     let lastError = ErrorCell()
     private let ops: AsyncStream<@Sendable () async throws(TransportError) -> Void>.Continuation
@@ -76,6 +80,8 @@ final class ControllerBox: @unchecked Sendable {
     /// already queued to finish before the controller is neutralised.
     func invalidate() -> Task<Void, Never> {
         invalidatedFlag.store(true, ordering: .releasing)
+        inputTask?.cancel()
+        latest.withLock { s in s.generation &+= 1; s.value = nil }
         ops.finish()
         return opTask
     }
@@ -83,12 +89,19 @@ final class ControllerBox: @unchecked Sendable {
     /// (Re)subscribes to input; called on connect and reconnect.
     func restartInput() {
         inputTask?.cancel()
+        let generation = latest.withLock { s in
+            s.generation &+= 1
+            s.value = nil
+            return s.generation
+        }
         let c = controller
         inputTask = Task.detached { [weak self] in
             for await e in await c.inputEvents() {
-                self?.store(e)
+                self?.store(e, generation: generation)
             }
-            self?.latest.withLock { $0 = nil }
+            self?.latest.withLock { s in
+                if s.generation == generation { s.value = nil }
+            }
         }
     }
 
@@ -100,9 +113,9 @@ final class ControllerBox: @unchecked Sendable {
         return TACTILE_OK.rawValue
     }
 
-    func input() -> tactile_input_state? { latest.withLock { $0 } }
+    func input() -> tactile_input_state? { latest.withLock { $0.value } }
 
-    private func store(_ e: InputEvent) {
+    private func store(_ e: InputEvent, generation: UInt64) {
         let n = reportCount.add(1, ordering: .relaxed).newValue
         var s = tactile_input_state()
         s.struct_size = UInt32(MemoryLayout<tactile_input_state>.size)
@@ -138,7 +151,9 @@ final class ControllerBox: @unchecked Sendable {
             s.battery_charging = -1
         }
         s.report_count = n
-        latest.withLock { $0 = s }
+        latest.withLock { snapshot in
+            if snapshot.generation == generation { snapshot.value = s }
+        }
     }
 
     /// Feeds PCM to the haptics stream. Nothing is queued while haptics are
@@ -191,8 +206,12 @@ final class ContextBox: @unchecked Sendable {
     /// Reported by wait_for_controller when no controller shows up.
     let lastOpenError = Atomic<Int32>(0)
 
-    init(options: ConnectionOptions) {
-        manager = ControllerManager(options: options)
+    convenience init(options: ConnectionOptions) {
+        self.init(manager: ControllerManager(options: options))
+    }
+
+    init(manager: ControllerManager) {
+        self.manager = manager
         callbackQueue.setSpecific(key: onCallbackQueue, value: true)
         let events = manager.events()
         eventTask = Task.detached { [weak self] in
@@ -281,10 +300,12 @@ final class ContextBox: @unchecked Sendable {
         }
         eventTask?.cancel()
         drainCallbacks()
-        let all = boxes.withLock { Array($0.values) }
-        let opTasks = all.map { $0.invalidate() }
+        let events = eventTask
         let m = manager
-        blocking {
+        blocking { [self] in
+            await events?.value
+            let all = boxes.withLock { Array($0.values) }
+            let opTasks = all.map { $0.invalidate() }
             // Queued ops finish (or fail) before the neutral report, so none
             // can land after it.
             for t in opTasks { await t.value }

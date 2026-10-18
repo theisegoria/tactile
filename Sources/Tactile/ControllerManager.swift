@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 public import TactileTransport
+import TactileCore
 
 /// Lifecycle events.
 public enum ControllerEvent: Sendable {
@@ -21,7 +22,7 @@ public enum ControllerEvent: Sendable {
 /// instance waits as a standby and takes over when the live one is removed.
 public final class ControllerManager: Sendable {
     public let options: ConnectionOptions
-    private let discovery = DeviceDiscovery()
+    private let discover: @Sendable () -> AsyncThrowingStream<ManagerDiscoveryEvent, any Error>
     private struct Standby {
         var connection: DeviceConnection
         var info: DeviceInfo
@@ -31,6 +32,7 @@ public final class ControllerManager: Sendable {
         var keyByDeviceID: [UInt64: String] = [:]
         var standby: [String: Standby] = [:]
         var task: Task<Void, Never>?
+        var cleanup: Task<Void, Never>?
         var continuations: [UUID: AsyncStream<ControllerEvent>.Continuation] = [:]
         /// Bumped by `shutdown()`; an open that started before it is discarded.
         var generation: UInt64 = 0
@@ -39,6 +41,31 @@ public final class ControllerManager: Sendable {
 
     public init(options: ConnectionOptions = .init()) {
         self.options = options
+        discover = {
+            let source = DeviceDiscovery().events()
+            return AsyncThrowingStream { continuation in
+                let task = Task {
+                    do {
+                        for try await event in source {
+                            switch event {
+                            case .connected(let info, let reference):
+                                continuation.yield(.connected(info, { () async throws(TransportError) in
+                                    try await DeviceConnection.open(reference, info: info, options: options)
+                                }))
+                            case .disconnected(let id): continuation.yield(.disconnected(id))
+                            }
+                        }
+                        continuation.finish()
+                    } catch { continuation.finish(throwing: error) }
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+    }
+
+    init(options: ConnectionOptions, discover: @escaping @Sendable () -> AsyncThrowingStream<ManagerDiscoveryEvent, any Error>) {
+        self.options = options
+        self.discover = discover
     }
 
     deinit { state.withLock { $0.task?.cancel() } }
@@ -80,7 +107,10 @@ public final class ControllerManager: Sendable {
         return await withTaskGroup(of: Controller?.self) { g in
             g.addTask {
                 for await e in events {
-                    if case .connected(let c) = e { return c }
+                    switch e {
+                    case .connected(let c), .reconnected(let c): return c
+                    default: continue
+                    }
                 }
                 return nil
             }
@@ -97,7 +127,14 @@ public final class ControllerManager: Sendable {
     public func start() {
         state.withLock { s in
             guard s.task == nil else { return }
-            s.task = Task { [weak self] in await self?.run() }
+            s.generation &+= 1
+            let generation = s.generation
+            let cleanup = s.cleanup
+            s.task = Task { [weak self] in
+                await cleanup?.value
+                guard !Task.isCancelled else { return }
+                await self?.run(generation: generation)
+            }
         }
     }
 
@@ -106,37 +143,55 @@ public final class ControllerManager: Sendable {
     /// is left behind. Event streams end; a later `events()` starts a fresh
     /// session in which controllers are announced again as new objects.
     public func shutdown() async {
-        let (all, standby, task) = state.withLock { s in
+        let (continuations, cleanup) = state.withLock { s in
             s.generation &+= 1
-            let r = (Array(s.byKey.values), Array(s.standby.values), s.task)
+            let all = Array(s.byKey.values)
+            let standby = Array(s.standby.values)
+            let task = s.task
+            let previousCleanup = s.cleanup
+            let continuations = Array(s.continuations.values)
             s.byKey.removeAll()
             s.keyByDeviceID.removeAll()
             s.standby.removeAll()
             s.task = nil
-            for c in s.continuations.values { c.finish() }
             s.continuations.removeAll()
-            return r
+            let cleanup = Task {
+                task?.cancel()
+                await task?.value
+                await previousCleanup?.value
+                for c in all { await c.close() }
+                for sb in standby { await sb.connection.close() }
+            }
+            s.cleanup = cleanup
+            return (continuations, cleanup)
         }
-        task?.cancel()
-        await task?.value
-        for c in all { await c.close() }
-        for sb in standby { await sb.connection.close() }
+        // finish invokes onTermination synchronously, which re-enters state.
+        for c in continuations { c.finish() }
+        await cleanup.value
     }
 
-    private func emit(_ e: ControllerEvent) {
+    private func emit(_ e: ControllerEvent, generation: UInt64) {
         state.withLock { s in
+            guard s.generation == generation else { return }
             for c in s.continuations.values { c.yield(e) }
         }
     }
 
-    private func run() async {
+    private func run(generation: UInt64) async {
+        defer {
+            state.withLock { s in
+                if s.generation == generation { s.task = nil }
+            }
+        }
         do {
-            for try await event in discovery.events() {
+            for try await event in discover() {
+                guard !Task.isCancelled, state.withLock({ $0.generation == generation }) else { break }
                 switch event {
-                case .connected(let info, let ref):
-                    await handleConnect(info, ref)
+                case .connected(let info, let open):
+                    guard options.allowedTransports.contains(info.transport) else { continue }
+                    await handleConnect(info, open: open, generation: generation)
                 case .disconnected(let deviceID):
-                    await handleDisconnect(deviceID)
+                    await handleDisconnect(deviceID, generation: generation)
                 }
             }
         } catch {}
@@ -149,13 +204,12 @@ public final class ControllerManager: Sendable {
         case replace(Controller)
     }
 
-    private func handleConnect(_ info: DeviceInfo, _ ref: HIDDeviceClientReference) async {
-        let generation = state.withLock { $0.generation }
+    private func handleConnect(_ info: DeviceInfo, open: @Sendable () async throws(TransportError) -> DeviceConnection, generation: UInt64) async {
         let conn: DeviceConnection
         do {
-            conn = try await DeviceConnection.open(ref, info: info, options: options)
+            conn = try await open()
         } catch {
-            emit(.failed(info, error))
+            emit(.failed(info, error), generation: generation)
             return
         }
         let key = await conn.address?.description ?? info.serialNumber ?? "id-\(info.deviceID)"
@@ -194,7 +248,7 @@ public final class ControllerManager: Sendable {
             try? await live.apply(OutputState())
         case .replace(let c):
             await c.replaceConnection(conn, info: info)
-            emit(.reconnected(c))
+            emit(.reconnected(c), generation: generation)
         }
     }
 
@@ -204,8 +258,9 @@ public final class ControllerManager: Sendable {
         case lost(Controller, Standby?)
     }
 
-    private func handleDisconnect(_ deviceID: UInt64) async {
+    private func handleDisconnect(_ deviceID: UInt64, generation: UInt64) async {
         let outcome = state.withLock { s -> DisconnectOutcome in
+            guard s.generation == generation else { return .ignore }
             guard let key = s.keyByDeviceID.removeValue(forKey: deviceID) else { return .ignore }
             if let sb = s.standby[key], sb.info.deviceID == deviceID {
                 s.standby[key] = nil
@@ -229,11 +284,17 @@ public final class ControllerManager: Sendable {
             }
             if let standby, await standby.connection.isOpen {
                 await c.replaceConnection(standby.connection, info: standby.info)
-                emit(.reconnected(c))
+                emit(.reconnected(c), generation: generation)
             } else {
                 await standby?.connection.close()
-                emit(.disconnected(c))
+                emit(.disconnected(c), generation: generation)
             }
         }
     }
+}
+
+/// Factories defer all connection side effects until after the transport filter.
+enum ManagerDiscoveryEvent: Sendable {
+    case connected(DeviceInfo, @Sendable () async throws(TransportError) -> DeviceConnection)
+    case disconnected(UInt64)
 }

@@ -28,9 +28,26 @@ public struct OpusStreamFormat: Sendable, Hashable, Codable {
     /// Microphone lead (🔬): 24 kHz mono, 10 ms.
     public static let microphone = OpusStreamFormat(sampleRate: 24000, channels: 1)
 
-    public var framesPerPacket: Int { Int((sampleRate * frameMilliseconds / 1000).rounded()) }
+    /// Zero for an invalid format; never traps even for decoded or mutated values.
+    public var framesPerPacket: Int {
+        guard isValid else { return 0 }
+        return Int((sampleRate * frameMilliseconds / 1000).rounded())
+    }
+
+    private var isValid: Bool {
+        [8_000.0, 12_000, 16_000, 24_000, 48_000].contains(sampleRate)
+            && (1...2).contains(channels)
+            && [2.5, 5, 10, 20, 40, 60].contains(frameMilliseconds)
+    }
+
+    public func validate() throws(OpusCodecError) {
+        guard isValid else {
+            throw .unsupportedFormat("\(sampleRate) Hz, \(channels) ch, \(frameMilliseconds) ms")
+        }
+    }
 
     func avFormats() throws(OpusCodecError) -> (pcm: AVAudioFormat, opus: AVAudioFormat) {
+        try validate()
         var d = AudioStreamBasicDescription(
             mSampleRate: sampleRate, mFormatID: kAudioFormatOpus, mFormatFlags: 0, mBytesPerPacket: 0,
             mFramesPerPacket: UInt32(framesPerPacket), mBytesPerFrame: 0, mChannelsPerFrame: UInt32(channels),
@@ -54,6 +71,9 @@ public final class OpusEncoder: @unchecked Sendable {
     /// - Parameter bitRate: bits per second; snapped to the nearest bitrate the
     ///   system encoder supports. Lower rates give smaller packets.
     public init(format: OpusStreamFormat = .speaker, bitRate: Int = 96_000) throws(OpusCodecError) {
+        guard (6_000...512_000).contains(bitRate) else {
+            throw .unsupportedFormat("bitrate must be 6000…512000 bits/s")
+        }
         self.format = format
         (pcm, opus) = try format.avFormats()
         guard let c = AVAudioConverter(from: pcm, to: opus) else {
@@ -74,6 +94,9 @@ public final class OpusEncoder: @unchecked Sendable {
     /// Queues interleaved samples and returns every complete packet.
     public func encode(interleaved samples: [Float]) throws(OpusCodecError) -> [[UInt8]] {
         let ch = format.channels
+        guard samples.count.isMultiple(of: ch) else {
+            throw .conversionFailed("interleaved PCM must contain complete \(ch)-channel frames")
+        }
         for (i, x) in samples.enumerated() { pending[i % ch].append(x.isFinite ? x : 0) }
         var packets: [[UInt8]] = []
         let n = format.framesPerPacket
@@ -141,6 +164,7 @@ public final class OpusDecoder: @unchecked Sendable {
     /// Decodes one packet. Malformed packets throw; the decoder stays usable.
     public func decode(_ packet: [UInt8]) throws(OpusCodecError) -> [Float] {
         guard !packet.isEmpty else { return [] }
+        guard packet.count <= 65_535 else { throw .conversionFailed("Opus packet exceeds 65535 bytes") }
         let input = AVAudioCompressedBuffer(format: opus, packetCapacity: 1, maximumPacketSize: packet.count)
         packet.withUnsafeBytes { input.data.copyMemory(from: $0.baseAddress!, byteCount: packet.count) }
         input.byteLength = UInt32(packet.count)

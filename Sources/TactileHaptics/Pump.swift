@@ -38,6 +38,7 @@ public final class HapticsPump: @unchecked Sendable {
         var thread: Thread?
         /// Entered when a run starts, left when its thread exits.
         var exited: DispatchGroup?
+        var restartRequested = false
     }
     private let control = Mutex(Control())
     private let timebase: mach_timebase_info_data_t
@@ -63,25 +64,48 @@ public final class HapticsPump: @unchecked Sendable {
 
     /// Starts the pump thread. No-op while already running. Safe from any thread.
     public func start() {
-        control.withLock { c in
-            guard !running.load(ordering: .acquiring) else { return }
-            running.store(true, ordering: .releasing)
-            let myGen = generation.add(1, ordering: .acquiringAndReleasing).newValue
-            recorder.reset()
-            cpuStart.withLock { $0 = (0, 0) }
-            let exited = DispatchGroup()
-            exited.enter()
-            let t = Thread { [self] in
-                defer { exited.leave() }
-                self.run(generation: myGen)
+        while true {
+            let waitFor = control.withLock { c -> DispatchGroup? in
+                guard !running.load(ordering: .acquiring) else { return nil }
+                if let thread = c.thread {
+                    if thread === Thread.current {
+                        c.restartRequested = true
+                        return nil
+                    }
+                    return c.exited
+                }
+                startLocked(&c)
+                return nil
             }
-            t.name = "Tactile.HapticsPump"
-            t.qualityOfService = .userInteractive
-            t.stackSize = 1 << 18
-            c.thread = t
-            c.exited = exited
-            t.start()
+            guard let waitFor else { return }
+            // Never hold control while joining: stop may be called by submit.
+            waitFor.wait()
         }
+    }
+
+    private func startLocked(_ c: inout Control) {
+        running.store(true, ordering: .releasing)
+        c.restartRequested = false
+        let myGen = generation.add(1, ordering: .acquiringAndReleasing).newValue
+        recorder.reset()
+        cpuStart.withLock { $0 = (0, 0) }
+        let exited = DispatchGroup()
+        exited.enter()
+        let t = Thread { [self] in
+            run(generation: myGen)
+            control.withLock { c in
+                c.thread = nil
+                c.exited = nil
+                exited.leave()
+                if c.restartRequested { startLocked(&c) }
+            }
+        }
+        t.name = "Tactile.HapticsPump"
+        t.qualityOfService = .userInteractive
+        t.stackSize = 1 << 18
+        c.thread = t
+        c.exited = exited
+        t.start()
     }
 
     /// Stops the pump and waits (at most about one period) until its thread has
@@ -95,8 +119,8 @@ public final class HapticsPump: @unchecked Sendable {
                 running.store(false, ordering: .releasing)
                 generation.add(1, ordering: .acquiringAndReleasing)
             }
+            c.restartRequested = false
             let onPump = c.thread.map { $0 === Thread.current } ?? false
-            c.thread = nil
             return (c.exited, onPump)
         }
         if let exited, !onPumpThread { exited.wait() }
@@ -173,11 +197,14 @@ public final class HapticsPump: @unchecked Sendable {
                     inFlight.add(1, ordering: .acquiringAndReleasing)
                     sink.submit(report) { [self] ok in
                         self.inFlight.subtract(1, ordering: .acquiringAndReleasing)
-                        let done = mach_absolute_time()
-                        if ok {
-                            self.recorder.sent(latencyUs: self.toMicros(done - built))
-                        } else {
-                            self.recorder.dropped()
+                        self.control.withLock { _ in
+                            guard self.isCurrent(myGen) else { return }
+                            let done = mach_absolute_time()
+                            if ok {
+                                self.recorder.sent(latencyUs: self.toMicros(done - built))
+                            } else {
+                                self.recorder.dropped()
+                            }
                         }
                     }
                 }

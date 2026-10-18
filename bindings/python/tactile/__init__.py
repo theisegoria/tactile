@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import ctypes as C
 import os
+import math
+import operator
 import pathlib
 import threading
 import weakref
@@ -84,6 +86,20 @@ class _HapticsMetrics(C.Structure):
     ]
 
 
+def _integer(value, low: int, high: int, name: str) -> int:
+    try:
+        result = operator.index(value)
+    except TypeError:
+        raise ValueError(f"{name} must be an integer") from None
+    if not low <= result <= high:
+        raise ValueError(f"{name} must be {low}…{high}")
+    return result
+
+
+def _i32(value) -> int:
+    return _integer(value, -(2**31), 2**31 - 1, "argument")
+
+
 class TriggerEffect(C.Structure):
     """11-byte wire encoding of an adaptive-trigger effect. Build with the static methods."""
     _fields_ = [("bytes", C.c_uint8 * 11)]
@@ -98,7 +114,7 @@ class TriggerEffect(C.Structure):
     @staticmethod
     def _build(fn, *args) -> "TriggerEffect":
         e = TriggerEffect()
-        _check(fn(*[C.c_int32(a) for a in args], C.byref(e)))
+        _check(fn(*[C.c_int32(_i32(a)) for a in args], C.byref(e)))
         return e
 
     @staticmethod
@@ -122,7 +138,7 @@ class TriggerEffect(C.Structure):
         if len(strengths) != 10:
             raise ValueError("strengths needs 10 entries")
         e = TriggerEffect()
-        _check(_lib().tactile_trigger_multiple_position_feedback((C.c_int32 * 10)(*strengths), C.byref(e)))
+        _check(_lib().tactile_trigger_multiple_position_feedback((C.c_int32 * 10)(*map(_i32, strengths)), C.byref(e)))
         return e
 
     @staticmethod
@@ -130,7 +146,7 @@ class TriggerEffect(C.Structure):
         if len(amplitudes) != 10:
             raise ValueError("amplitudes needs 10 entries")
         e = TriggerEffect()
-        _check(_lib().tactile_trigger_multiple_position_vibration(C.c_int32(frequency), (C.c_int32 * 10)(*amplitudes), C.byref(e)))
+        _check(_lib().tactile_trigger_multiple_position_vibration(C.c_int32(_i32(frequency)), (C.c_int32 * 10)(*map(_i32, amplitudes)), C.byref(e)))
         return e
 
     # Unofficial effects
@@ -348,16 +364,16 @@ class Controller:
         return InputState(s)
 
     def set_lightbar(self, r: int, g: int, b: int) -> None:
-        _check(_lib().tactile_controller_set_lightbar(self._h, r, g, b))
+        _check(_lib().tactile_controller_set_lightbar(self._h, *[_integer(x, 0, 255, "color") for x in (r, g, b)]))
 
     def set_player_leds(self, mask: int) -> None:
-        _check(_lib().tactile_controller_set_player_leds(self._h, mask))
+        _check(_lib().tactile_controller_set_player_leds(self._h, _integer(mask, 0, 31, "mask")))
 
     def set_mute_led(self, mode: int) -> None:
         _check(_lib().tactile_controller_set_mute_led(self._h, mode))
 
     def set_rumble(self, left: int, right: int) -> None:
-        _check(_lib().tactile_controller_set_rumble(self._h, left, right))
+        _check(_lib().tactile_controller_set_rumble(self._h, _integer(left, 0, 255, "left"), _integer(right, 0, 255, "right")))
 
     def set_trigger(self, side: int, effect: TriggerEffect) -> None:
         _check(_lib().tactile_controller_set_trigger(self._h, side, C.byref(effect)))
@@ -378,7 +394,14 @@ class Controller:
         _check(_lib().tactile_haptics_play(self._h, effect, intensity, side))
 
     def write_pcm(self, samples: Sequence[float], channels: int, sample_rate: float) -> int:
+        channels = _integer(channels, 1, 2**31 - 1, "channels")
+        if not math.isfinite(sample_rate) or sample_rate <= 0:
+            raise ValueError("sample_rate must be finite and positive")
         n = len(samples)
+        if n % channels:
+            raise ValueError("PCM must contain complete interleaved frames")
+        if n // channels > 2**31 - 1:
+            raise ValueError("too many PCM frames")
         buf = (C.c_float * n)(*samples)
         return _check(_lib().tactile_haptics_write_pcm(self._h, buf, n // channels, channels, sample_rate))
 

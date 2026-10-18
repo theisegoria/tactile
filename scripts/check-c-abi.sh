@@ -3,8 +3,12 @@
 # link against libCTactile, and hardware-free behaviour checks.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift build --product CTactile >/dev/null
-BIN="$(swift build --show-bin-path)"
+if [[ -n "${TACTILE_BIN:-}" ]]; then
+  BIN="$TACTILE_BIN"
+else
+  swift build --product CTactile >/dev/null
+  BIN="$(swift build --show-bin-path)"
+fi
 INC="Sources/CTactileHeaders/include"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
