@@ -1,0 +1,10 @@
+version = 1
+name = "Tactile Lab"
+
+[setup]
+script = ""
+
+[[actions]]
+name = "Run"
+icon = "run"
+command = "./scripts/run-lab.sh"

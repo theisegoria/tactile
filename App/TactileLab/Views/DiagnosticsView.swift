@@ -23,7 +23,15 @@ struct DiagnosticsView: View {
                     Button("Refresh", systemImage: "arrow.clockwise") { session.refreshDiagnostics() }.disabled(!session.canOperate)
                 }
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 9) {
-                    GridRow { Text("Identity").foregroundStyle(.secondary); Text(session.selectedID ?? "None").textSelection(.enabled) }
+                    GridRow {
+                        Text("Identity").foregroundStyle(.secondary)
+                        Text(session.selectedID ?? "None")
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("diagnosticIdentity")
+                            // Recreate the selectable text wrapper on a device
+                            // change; macOS otherwise retains its old AX value.
+                            .id(session.selectedID)
+                    }
                     GridRow { Text("Firmware").foregroundStyle(.secondary); Text(session.diagnostics.firmware.map { "\($0.updateVersionString) · firmware \(String($0.firmwareVersion, radix: 16)) · hardware \(String($0.hardwareVersion, radix: 16))" } ?? "Not available") }
                     GridRow { Text("GameController").foregroundStyle(.secondary); Text(session.diagnostics.gameController) }
                     GridRow { Text("Calibration").foregroundStyle(.secondary); Text(session.diagnostics.calibration) }
@@ -75,6 +83,10 @@ struct DiagnosticsView: View {
                     }.padding(8)
                 }
             }.padding(20)
+        }.onChange(of: session.selectedID) { _, _ in
+            frozen = nil
+            before = 0
+            after = 1
         }
     }
     private func snapshotPicker(_ title: String, selection: Binding<Int>) -> some View {

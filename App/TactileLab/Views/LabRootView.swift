@@ -13,7 +13,7 @@ struct LabRootView: View {
             if let error = session.errorMessage {
                 HStack(alignment: .top) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text(error).textSelection(.enabled)
+                    Text(error).textSelection(.enabled).accessibilityIdentifier("operationError")
                     Spacer()
                     Button("Dismiss", systemImage: "xmark") { session.clearError() }.labelStyle(.iconOnly)
                 }.padding(12).background(.orange.opacity(0.08))
@@ -30,7 +30,7 @@ struct LabRootView: View {
             HStack {
                 Text(session.status).lineLimit(2).accessibilityIdentifier("sessionStatus")
                 Spacer()
-                Text("Local session · \(session.readings.rate, specifier: "%.0f") Hz").monospacedDigit()
+                ReportRateLabel(readings: session.readings)
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.vertical, 9)
         }
         .toolbar {
@@ -55,9 +55,7 @@ struct LabRootView: View {
                 HStack(spacing: 10) {
                     Label(session.selectedDevice?.connected == true ? "Bluetooth connected" : "Bluetooth idle", systemImage: "antenna.radiowaves.left.and.right")
                     if session.simulated { Text("SIMULATED").fontWeight(.semibold).foregroundStyle(.orange).accessibilityIdentifier("simulationBadge") }
-                    if let battery = session.readings.input?.battery {
-                        Label("\(battery.percent)%", systemImage: battery.charging == .charging ? "battery.100percent.bolt" : "battery.75percent")
-                    }
+                    ControllerBatteryLabel(readings: session.readings)
                 }.font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -97,12 +95,28 @@ struct LabRootView: View {
     }
 }
 
+/// Frequent telemetry reads stay outside the parent view that owns native menus.
+private struct ControllerBatteryLabel: View {
+    var readings: LiveReadings
+    var body: some View {
+        if let battery = readings.input?.battery {
+            Label("\(battery.percent)%", systemImage: battery.charging == .charging ? "battery.100percent.bolt" : "battery.75percent")
+        }
+    }
+}
+
+private struct ReportRateLabel: View {
+    var readings: LiveReadings
+    var body: some View { Text("Local session · \(readings.rate, specifier: "%.0f") Hz").monospacedDigit() }
+}
+
 struct DurationControl: View {
     @Bindable var session: LabSession
     var body: some View {
         HStack {
             Label("Test duration", systemImage: "timer")
-            TextField("Seconds", value: $session.duration, format: .number).frame(width: 65).textFieldStyle(.roundedBorder)
+            TextField("Seconds", value: $session.duration, format: .number)
+                .labelsHidden().frame(width: 65).textFieldStyle(.roundedBorder).accessibilityIdentifier("testDuration")
             Text("seconds (0.1–60)").foregroundStyle(.secondary)
         }
     }

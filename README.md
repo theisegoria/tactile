@@ -42,6 +42,12 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 
 ## Quick start
 
+For a native graphical tester, open **[Tactile Lab](App/README.md)** with
+`./scripts/run-lab.sh` or `TactileLab.xcodeproj`. The app requires Apple silicon
+and macOS 27, provides five testing tabs and local session exports, and includes
+a visibly labeled simulation for use without hardware. Physical Bluetooth
+acceptance remains deferred; see the [October audit](docs/receipts/audit-2026-10-18.md).
+
 ```swift
 import Tactile
 

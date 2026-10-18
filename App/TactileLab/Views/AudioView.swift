@@ -89,8 +89,10 @@ struct AudioView: View {
                     micID = String(value.reportID, radix: 16); tocOffset = value.tocOffset; lengthOffset = value.lengthOffset.map(String.init) ?? ""
                 }
                 HStack {
-                    TextField("Report ID (hex)", text: $micID).textFieldStyle(.roundedBorder)
+                    TextField("Report ID (hex)", text: $micID).textFieldStyle(.roundedBorder).frame(maxWidth: .infinity)
                     integer("TOC offset", value: $tocOffset)
+                }
+                HStack {
                     TextField("Length offset (blank = remainder)", text: $lengthOffset).textFieldStyle(.roundedBorder)
                     integer("Trailer bytes", value: $trailer)
                 }
@@ -105,12 +107,16 @@ struct AudioView: View {
                 }
             }
         }.formStyle(.grouped)
+            .onChange(of: session.selectedID) { _, _ in candidate = -1 }
     }
 
     private var routing: AudioSettings { AudioSettings(headphoneVolume: UInt8(headphoneVolume), speakerVolume: UInt8(speakerVolume), micVolume: UInt8(micVolume), outputPath: path) }
     private var routingDescription: String { "route=\(path.rawValue); speaker=\(Int(speakerVolume)); headphones=\(Int(headphoneVolume)); mic=\(Int(micVolume))" }
     private func integer(_ label: String, value: Binding<Int>) -> some View {
-        HStack { Text(label).font(.caption); TextField(label, value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 75) }
+        HStack {
+            Text(label).font(.caption)
+            TextField(label, value: value, format: .number).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 75)
+        }
     }
     private func play() {
         guard let file else { return }

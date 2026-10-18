@@ -63,6 +63,9 @@ public final class DeviceDiscovery: Sendable {
             } catch {}
             return found
         }
+        // If the caller cancels during the settle delay, Task.sleep throws.
+        // The unstructured collector must still stop watching CoreHID.
+        defer { collector.cancel() }
         try await Task.sleep(for: settle)
         collector.cancel()
         return await collector.value

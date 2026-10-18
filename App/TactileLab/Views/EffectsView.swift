@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import SwiftUI
 import Tactile
 import UniformTypeIdentifiers
@@ -70,7 +69,7 @@ struct EffectsView: View {
                 HStack {
                     Text("Host microphone: \(session.microphonePermission == .authorized ? "allowed" : "permission required")").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Start Host Microphone Haptics") { microphone() }.disabled(!session.canOperate)
+                    Button("Start Host Microphone Haptics") { session.requestHostMicrophoneHaptics(gain: Float(gain)) }.disabled(!session.canOperate)
                 }
             }
         }.formStyle(.grouped)
@@ -90,16 +89,6 @@ struct EffectsView: View {
         default: .tone(intensity: Float(intensity), frequency: Float(frequency), duration: session.duration)
         }
         session.perform(.haptic(effect, hapticSide), name: haptic, settings: "side=\(hapticSide.rawValue), intensity=\(intensity), frequency=\(frequency), grainRate=\(grainRate)")
-    }
-    private func microphone() {
-        let id = session.selectedID
-        Task {
-            let permitted = session.simulated ? true : await AVCaptureDevice.requestAccess(for: .audio)
-            session.refreshPermissions()
-            guard permitted else { session.showError(LabError.invalid("Allow Microphone access in System Settings → Privacy & Security → Microphone.")); return }
-            guard session.selectedID == id else { return }
-            session.perform(.hostMicrophone(Float(gain)), name: "Host microphone haptics", settings: "host microphone, gain=\(gain)")
-        }
     }
 }
 

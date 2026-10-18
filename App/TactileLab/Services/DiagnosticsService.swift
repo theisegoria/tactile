@@ -3,9 +3,11 @@ import Tactile
 
 enum DiagnosticsService {
     static func collect(_ controller: Controller) async -> LabDiagnostics {
-        await Task.detached {
+        let collector = Task.detached {
             var result = LabDiagnostics()
+            guard !Task.isCancelled else { return result }
             result.firmware = await controller.firmware
+            guard !Task.isCancelled else { return result }
             result.descriptor = controller.reportDescriptor?.reports ?? []
             if let conflicts = controller.conflicts() {
                 result.conflicts = conflicts.otherClients.map(\.description)
@@ -14,7 +16,12 @@ enum DiagnosticsService {
             result.calibration = await controller.calibration?.isFromDevice == true ? "Factory calibration" : "Nominal calibration; factory data unavailable"
             result.metrics = metricValues(controller.hapticsMetrics())
             return result
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await collector.value
+        } onCancel: {
+            collector.cancel()
+        }
     }
 
     static func export(_ report: SessionReport, to directory: URL) async throws {
@@ -52,7 +59,7 @@ enum DiagnosticsService {
         }
         text += "\n## Operations\n"
         for operation in report.operations {
-            text += "\n### \(operation.name)\n\nDevice: \(operation.deviceID)\n\nRequested: \(operation.requestedSettings)\n\nTransport: \(operation.transportResult)\n"
+            text += "\n### \(operation.name)\n\nDevice: \(operation.deviceID)\n\nMode: \(operation.simulated ? "SIMULATED — no hardware evidence" : "Physical controller")\n\nRequested: \(operation.requestedSettings)\n\nTransport: \(operation.transportResult)\n"
         }
         text += "\n## Diagnostics\n\nInput: \(report.diagnostics.reportsReceived) reports, \(report.diagnostics.reportRate.formatted(.number.precision(.fractionLength(1)))) Hz\n\nCalibration: \(report.diagnostics.calibration)\n\nGameController: \(report.diagnostics.gameController)\n\nConflicts: \(report.diagnostics.conflicts.joined(separator: ", "))\n"
         for (name, value) in report.diagnostics.metrics.sorted(by: { $0.key < $1.key }) { text += "- \(name): \(value)\n" }

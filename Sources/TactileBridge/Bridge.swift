@@ -18,6 +18,18 @@ public import GameController
 public import TactileCore
 import Foundation
 
+/// A block observer is retained by NotificationCenter until explicitly removed.
+/// Owning the token separately also permits safe teardown off the main actor.
+final class NotificationObservation {
+    private let token: any NSObjectProtocol
+    private let center: NotificationCenter
+    init(_ token: any NSObjectProtocol, center: NotificationCenter = .default) {
+        self.token = token
+        self.center = center
+    }
+    deinit { center.removeObserver(token) }
+}
+
 @MainActor
 public final class ControllerBridge {
     public enum MatchReason: String, Sendable {
@@ -53,7 +65,7 @@ public final class ControllerBridge {
     /// DualSense GameController objects seen via connect notifications.
     private var attached: [ObjectIdentifier: GCController] = [:]
     private var lastGCButtons: [ObjectIdentifier: Buttons] = [:]
-    private var observers: [any NSObjectProtocol] = []
+    private var observers: [NotificationObservation] = []
     /// Called whenever a match is made or removed.
     public var onChange: (@MainActor (GCController, MACAddress?) -> Void)?
 
@@ -64,20 +76,20 @@ public final class ControllerBridge {
 
     public init() {
         let nc = NotificationCenter.default
-        observers.append(nc.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] n in
+        observers.append(NotificationObservation(nc.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] n in
             // Delivered on the main queue, so hopping onto the main actor is safe.
             nonisolated(unsafe) let c = n.object as? GCController
             MainActor.assumeIsolated {
                 if let c { self?.attach(c) }
             }
-        })
-        observers.append(nc.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] n in
+        }))
+        observers.append(NotificationObservation(nc.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] n in
             // Delivered on the main queue, so hopping onto the main actor is safe.
             nonisolated(unsafe) let c = n.object as? GCController
             MainActor.assumeIsolated {
                 if let c { self?.detach(c) }
             }
-        })
+        }))
         for c in GCController.controllers() { attach(c) }
     }
 

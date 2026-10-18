@@ -65,7 +65,7 @@ let package = Package(
             linkerSettings: [.linkedFramework("GameController")]
         ),
         .testTarget(name: "TactileCLITests", dependencies: ["tactilectl"], swiftSettings: strict),
-        .testTarget(name: "TactileTests", dependencies: ["Tactile", "TactileTransport", "TactileCore", "TactileCABI", "CTactileHeaders"], swiftSettings: strict),
+        .testTarget(name: "TactileTests", dependencies: ["Tactile", "TactileTransport", "TactileCore", "TactileBridge", "TactileCABI", "CTactileHeaders"], swiftSettings: strict),
         .testTarget(name: "TactileCoreTests", dependencies: ["TactileCore"], swiftSettings: strict),
         .testTarget(name: "TactileAudioTests", dependencies: ["TactileAudio", "TactileCore"], swiftSettings: strict),
         .testTarget(name: "TactileHapticsTests", dependencies: ["TactileHaptics", "TactileCore"], swiftSettings: strict),

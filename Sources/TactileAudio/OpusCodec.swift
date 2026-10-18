@@ -110,8 +110,16 @@ public final class OpusEncoder: @unchecked Sendable {
     public func flush() throws(OpusCodecError) -> [[UInt8]] {
         guard !pending[0].isEmpty else { return [] }
         let n = format.framesPerPacket
+        // A previous conversion error can leave whole queued frames behind.
+        // Drain those before padding, so the padding count cannot go negative.
+        var packets: [[UInt8]] = []
+        while pending[0].count >= n {
+            packets.append(contentsOf: try encodeOne(frames: n))
+        }
+        guard !pending[0].isEmpty else { return packets }
         for c in pending.indices { pending[c] += [Float](repeating: 0, count: n - pending[c].count) }
-        return try encodeOne(frames: n)
+        packets.append(contentsOf: try encodeOne(frames: n))
+        return packets
     }
 
     private func encodeOne(frames n: Int) throws(OpusCodecError) -> [[UInt8]] {

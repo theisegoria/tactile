@@ -48,7 +48,10 @@ struct TriggerEditor: View {
     }
 
     private func number(_ label: String, value: Binding<Int>) -> some View {
-        HStack { Text(label).font(.caption); TextField(label, value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 65) }.frame(maxWidth: .infinity, alignment: .leading)
+        HStack {
+            Text(label).font(.caption)
+            TextField(label, value: value, format: .number).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 65)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var isInvalid: Bool { if case .failure = validated { true } else { false } }
     private var validated: Result<TriggerEffect, any Error> { Result { try effect() } }

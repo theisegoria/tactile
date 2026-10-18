@@ -50,6 +50,7 @@ final class LabSession {
     private var selectionTask: Task<Void, Never>?
     private var diagnosticsTask: Task<Void, Never>?
     private var outputTask: Task<Void, Never>?
+    private var microphonePermissionTask: Task<Void, Never>?
     private var started = false
     private var observationHistory: [GuidedObservation] = []
 
@@ -161,6 +162,7 @@ final class LabSession {
         selectionGeneration &+= 1
         let epoch = selectionGeneration
         operationGeneration &+= 1
+        microphonePermissionTask?.cancel(); microphonePermissionTask = nil
         outputTask?.cancel(); inputTask?.cancel(); selectionTask?.cancel(); diagnosticsTask?.cancel()
         activeOperation = nil
         selectedID = id
@@ -238,6 +240,7 @@ final class LabSession {
         guard canOperate, let selectedID else { errorMessage = LabError.noController.localizedDescription; return }
         guard duration.isFinite, (0.1...60).contains(duration) else { errorMessage = "Duration must be 0.1–60 seconds."; return }
         operationGeneration &+= 1
+        microphonePermissionTask?.cancel(); microphonePermissionTask = nil
         let epoch = operationGeneration
         outputTask?.cancel()
         let receipt = OperationReceipt(deviceID: selectedID, name: name, requestedSettings: "\(settings); duration=\(duration)s", simulated: simulated, diagnostics: diagnostics)
@@ -277,6 +280,28 @@ final class LabSession {
         }
     }
 
+    func requestHostMicrophoneHaptics(gain: Float) {
+        guard canOperate, gain.isFinite, (0...4).contains(gain) else { return }
+        microphonePermissionTask?.cancel()
+        let epoch = operationGeneration
+        let deviceID = selectedID
+        microphonePermissionTask = Task {
+            guard !Task.isCancelled else { return }
+            let permitted = simulated ? true : await AVCaptureDevice.requestAccess(for: .audio)
+            // A system permission prompt cannot be withdrawn. Stop All,
+            // another output request, or a device change must invalidate its
+            // completion without waiting for the user to answer that prompt.
+            guard !Task.isCancelled, operationGeneration == epoch,
+                  selectedID == deviceID, canOperate else { return }
+            refreshPermissions()
+            guard permitted else {
+                showError(LabError.invalid("Allow Microphone access in System Settings → Privacy & Security → Microphone."))
+                return
+            }
+            perform(.hostMicrophone(gain), name: "Host microphone haptics", settings: "host microphone, gain=\(gain)")
+        }
+    }
+
     private func finish(_ id: UUID, result: String, metrics: [String: Double]) {
         guard let index = operations.firstIndex(where: { $0.id == id }) else { return }
         operations[index].finishedAt = Date(); operations[index].transportResult = result
@@ -287,6 +312,7 @@ final class LabSession {
 
     func stopAll() async {
         operationGeneration &+= 1
+        microphonePermissionTask?.cancel(); microphonePermissionTask = nil
         let epoch = operationGeneration
         let previous = outputTask
         previous?.cancel()
@@ -310,7 +336,11 @@ final class LabSession {
     func captureSnapshot(label: String) {
         guard !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let epoch = selectionGeneration
-        if simulated { snapshots.append(FeatureSnapshot(label: "Simulated: \(label)", reports: [0x20: [0x20, UInt8(snapshots.count % 256)]])); return }
+        if simulated {
+            snapshots.append(FeatureSnapshot(label: "Simulated: \(label)", reports: [0x20: [0x20, UInt8(snapshots.count % 256)]]))
+            if snapshots.count > 20 { snapshots.removeFirst() }
+            return
+        }
         guard let controller = selectedController else { return }
         diagnosticsTask?.cancel()
         diagnosticsTask = Task {
