@@ -10,4 +10,4 @@
 | 5 Engine bindings | ✅ written (all four, at maintainer's request) | Python tested vs dylib; others uncompiled | [gate-5.md](gate-5.md) |
 | 6 Stretch research | ✅ experimental code (at maintainer's request) | ⏳ nothing verified | [gate-6.md](gate-6.md) |
 | Audit | ✅ 60 confirmed bugs fixed | | [audit.md](audit.md) |
-| October audit and Tactile Lab | 136 library + 7 model tests passed before final static patches; 11/12 UI checks passed; final UI rerun and notarized release deferred by owner | Deferred by owner; all physical outcomes Unverified | [audit-2026-10-18.md](audit-2026-10-18.md), [hardware checklist](hardware-acceptance.md) |
+| October audit and Tactile Lab | Final library CI green: 136 tests, ABI, Python, samples and universal packaging; prior app model 7/7 and UI 11/12; final app rerun and notarized release deferred | Deferred by owner; all physical outcomes Unverified | [audit-2026-10-18.md](audit-2026-10-18.md), [hardware checklist](hardware-acceptance.md) |
