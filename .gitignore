@@ -16,3 +16,4 @@ bindings/godot/godot-cpp/
 bindings/godot/demo/bin/*.dylib
 bindings/godot/.sconsign.dblite
 __pycache__/
+.codebase-memory/
