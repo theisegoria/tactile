@@ -45,7 +45,11 @@ PY
 echo "Verified Developer ID signature, hardened runtime, audio entitlement and arm64 architecture."
 echo "Archive: $ARCHIVE"
 if [[ "${1:-}" == "--archive-only" ]]; then exit 0; fi
+# --signed-only: Developer ID signed downloads without notarization (no notary profile needed;
+# recipients open the app with right-click > Open the first time).
+SIGNED_ONLY=0; [[ "${1:-}" == "--signed-only" ]] && SIGNED_ONLY=1
 
+if [[ $SIGNED_ONLY == 0 ]]; then
 # Credentials are held in Keychain, never passed as command-line secrets.
 xcrun notarytool history --keychain-profile "$PROFILE" --output-format json > "$WORK/notary-history.json"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$WORK/submission.zip"
@@ -59,6 +63,7 @@ PY
 xcrun stapler staple "$APP" > "$WORK/staple-app.txt" 2>&1
 xcrun stapler validate "$APP" >> "$WORK/staple-app.txt" 2>&1
 spctl --assess --type execute --verbose=4 "$APP" > "$WORK/gatekeeper-app.txt" 2>&1
+fi
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
 NAME="Tactile-Lab-$VERSION-apple-silicon"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$DOWNLOAD/$NAME.zip"
@@ -68,6 +73,7 @@ ln -s /Applications "$WORK/dmg-root/Applications"
 cp "$ROOT/App/Installation.txt" "$WORK/dmg-root/Installation.txt"
 hdiutil create -volname 'Tactile Lab' -srcfolder "$WORK/dmg-root" -format UDZO -ov "$DOWNLOAD/$NAME.dmg" > "$WORK/dmg-create.txt"
 codesign --timestamp --sign "$IDENTITY" "$DOWNLOAD/$NAME.dmg"
+if [[ $SIGNED_ONLY == 0 ]]; then
 xcrun notarytool submit "$DOWNLOAD/$NAME.dmg" --keychain-profile "$PROFILE" --wait --output-format json > "$WORK/notarization-dmg.json"
 python3 - "$WORK/notarization-dmg.json" <<'PY'
 import json, sys
@@ -76,16 +82,23 @@ if json.load(open(sys.argv[1])).get('status') != 'Accepted':
 PY
 xcrun stapler staple "$DOWNLOAD/$NAME.dmg" > "$WORK/staple-dmg.txt" 2>&1
 xcrun stapler validate "$DOWNLOAD/$NAME.dmg" >> "$WORK/staple-dmg.txt" 2>&1
+fi
 codesign --verify --verbose=2 "$DOWNLOAD/$NAME.dmg" 2> "$WORK/signature-dmg.txt"
-spctl --assess --type open --context context:primary-signature --verbose=4 "$DOWNLOAD/$NAME.dmg" > "$WORK/gatekeeper-dmg.txt" 2>&1
+[[ $SIGNED_ONLY == 1 ]] || spctl --assess --type open --context context:primary-signature --verbose=4 "$DOWNLOAD/$NAME.dmg" > "$WORK/gatekeeper-dmg.txt" 2>&1
 cp "$ROOT/App/Installation.txt" "$DOWNLOAD/Installation.txt"
 (cd "$DOWNLOAD" && shasum -a 256 "$NAME.zip" "$NAME.dmg" > SHA256SUMS.txt)
 mkdir -p "$DOWNLOAD/verification"
-cp "$WORK"/notarization-*.json "$WORK"/staple-*.txt "$WORK"/gatekeeper-*.txt "$WORK"/signature*.txt "$WORK/signing-details.txt" "$WORK/entitlements.plist" "$DOWNLOAD/verification/"
+cp "$WORK"/signature*.txt "$WORK/signing-details.txt" "$WORK/entitlements.plist" "$DOWNLOAD/verification/"
+[[ $SIGNED_ONLY == 1 ]] || cp "$WORK"/notarization-*.json "$WORK"/staple-*.txt "$WORK"/gatekeeper-*.txt "$DOWNLOAD/verification/"
 DESTINATION="$ROOT/dist/TactileLab"
+[[ $SIGNED_ONLY == 1 ]] && DESTINATION="$ROOT/dist/TactileLab-signed"
 if [[ -e "$DESTINATION" ]]; then
   # Preserve the prior local download until the new one has passed all checks.
   mv "$DESTINATION" "$WORK/previous-download"
 fi
 mv "$DOWNLOAD" "$DESTINATION"
-echo "Notarized, stapled downloads and checksums: $DESTINATION"
+# The archive and the app copy are regenerable; keep only the logs.
+rm -rf "$WORK/Tactile Lab.app" "$WORK/submission.zip" "$WORK/dmg-root"
+[[ "$ARCHIVE" == "$WORK/"* ]] && rm -rf "$ARCHIVE"
+if [[ $SIGNED_ONLY == 1 ]]; then echo "Developer ID signed (not notarized) downloads and checksums: $DESTINATION"
+else echo "Notarized, stapled downloads and checksums: $DESTINATION"; fi

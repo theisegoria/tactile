@@ -6,6 +6,14 @@ Before 1.0.0, minor versions may break the Swift API; the C ABI major
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-27
+
+### Changed — Tactile Lab 1.1
+- Liquid Glass layout: a sidebar of lab sections and connected controllers, the controller
+  picker, test length and Stop All in the glass toolbar, and a floating status bar.
+- Named controls light up as tinted glass; player cards are tinted with each player's colour.
+- `scripts/release-lab.sh --signed-only` builds Developer ID signed downloads without notarization.
+
 ### Added — multiple controllers / split screen
 - `PlayerSlots` (TactileCore): stable player numbers 1–8 keyed by controller identity;
   seats held across disconnects; assign/swap/release; `LightbarColor.player(_:)`.

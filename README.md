@@ -17,7 +17,7 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 *Tactile Lab, the companion macOS app (`App/`), shown in its simulation mode: no
 controller was connected for these captures.*
 
-> Status: 0.1.0, pre-release. All software gates (0–4) are built and unit-tested, but
+> Status: 0.2.0, pre-release. All software gates (0–4) are built and unit-tested, but
 > **nothing has been verified on a controller yet** — see `docs/receipts/` and the
 > status column in `PROTOCOL.md`.
 
