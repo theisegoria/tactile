@@ -76,9 +76,9 @@ private struct PlayerCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(.background.secondary))
+        .glassEffect(.regular.tint(device == nil ? .clear : color.opacity(selected ? 0.16 : 0.07)), in: .rect(cornerRadius: 22))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 22)
                 .strokeBorder(device == nil ? AnyShapeStyle(.separator) : AnyShapeStyle(color.opacity(selected ? 0.9 : 0.35)),
                               style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: device == nil ? [5, 4] : []))
         }

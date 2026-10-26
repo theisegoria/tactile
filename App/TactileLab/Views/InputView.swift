@@ -48,14 +48,17 @@ struct InputView: View {
                 .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.08), lineWidth: 1) }
                 .environment(\.colorScheme, .dark)
                 GroupBox("Named controls") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 84))], spacing: 8) {
-                        ForEach(ButtonName.all) { button in
-                            let active = input.buttons.contains(button.value)
-                            Text(button.name).font(.caption.weight(.medium))
-                                .frame(maxWidth: .infinity).padding(.vertical, 7)
-                                .background(active ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 7))
-                                .foregroundStyle(active ? Color.accentColor : .secondary)
-                                .accessibilityLabel(button.name).accessibilityValue(active ? "Pressed" : "Released")
+                    GlassEffectContainer(spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84))], spacing: 8) {
+                            ForEach(ButtonName.all) { button in
+                                let active = input.buttons.contains(button.value)
+                                Text(button.name).font(.caption.weight(active ? .semibold : .medium))
+                                    .frame(maxWidth: .infinity).padding(.vertical, 7)
+                                    .foregroundStyle(active ? Color.white : .secondary)
+                                    .glassEffect(active ? .regular.tint(.accentColor.opacity(0.75)) : .regular, in: .capsule)
+                                    .animation(.easeOut(duration: 0.12), value: active)
+                                    .accessibilityLabel(button.name).accessibilityValue(active ? "Pressed" : "Released")
+                            }
                         }
                     }.padding(6)
                 }

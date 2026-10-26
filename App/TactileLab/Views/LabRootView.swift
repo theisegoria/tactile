@@ -6,9 +6,87 @@ struct LabRootView: View {
     @State private var showAdvanced = false
 
     var body: some View {
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 210, ideal: 236, max: 300)
+        } detail: {
+            detail
+                .navigationTitle(session.tab.rawValue)
+                .navigationSubtitle(subtitle)
+        }
+        .onAppear {
+            // macOS gives the first text field (the toolbar's test length) focus
+            // when the window opens; start with nothing focused instead.
+            DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Picker("Controller", selection: Binding(get: { session.selectedID ?? "" }, set: { session.select($0.isEmpty ? nil : $0) })) {
+                    Text("Select a controller").tag("")
+                    ForEach(session.devices) { device in
+                        Text("\(device.displayName)\(device.connected ? "" : " (offline)")").tag(device.id)
+                    }
+                }
+                .labelsHidden().fixedSize()
+                .accessibilityLabel("Selected controller").accessibilityIdentifier("selectedController")
+            }
+            ToolbarItem(placement: .primaryAction) { DurationControl(session: session) }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) {
+                Button(role: .destructive) { Task { await session.stopAll() } } label: {
+                    Label("Stop All", systemImage: "stop.fill")
+                }
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.glassProminent).tint(.red)
+                .accessibilityIdentifier("stopAll")
+                .help("Stop every effect and return outputs to neutral (⌘.)")
+            }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("Export Session", systemImage: "square.and.arrow.up") { session.exportReport() }
+                Button("Connection Options", systemImage: "slider.horizontal.3") { showAdvanced.toggle() }
+                    .popover(isPresented: $showAdvanced) { connectionOptions }
+            }
+        }
+    }
+
+    private var subtitle: String {
+        guard let device = session.selectedDevice else { return "No controller selected" }
+        return device.connected ? "Bluetooth connected" : "Bluetooth idle"
+    }
+
+    private var sidebar: some View {
+        List(selection: Binding(get: { session.tab }, set: { if let t = $0 { session.tab = t } })) {
+            Section("Lab") {
+                ForEach(LabTab.allCases) { tab in
+                    Label(tab.rawValue, systemImage: tab.symbol).tag(tab)
+                }
+            }
+            if !session.devices.isEmpty {
+                Section("Controllers") {
+                    ForEach(session.devices) { device in
+                        ControllerRow(session: session, device: device)
+                    }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if session.simulated {
+                HStack(spacing: 6) {
+                    Image(systemName: "testtube.2").accessibilityHidden(true)
+                    Text("SIMULATED").accessibilityIdentifier("simulationBadge")
+                }
+                .font(.callout.weight(.bold)).foregroundStyle(.orange)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .glassEffect(.regular.tint(.orange.opacity(0.18)), in: .capsule)
+                .help("Simulation sends no controller output")
+                .padding(12)
+            }
+        }
+    }
+
+    private var detail: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             if session.permission != .granted && !session.simulated { permissionBanner }
             if let error = session.errorMessage {
                 HStack(alignment: .top) {
@@ -16,108 +94,36 @@ struct LabRootView: View {
                     Text(error).textSelection(.enabled).accessibilityIdentifier("operationError")
                     Spacer()
                     Button("Dismiss", systemImage: "xmark") { session.clearError() }.labelStyle(.iconOnly)
-                }.padding(12).background(.orange.opacity(0.08))
-            }
-            TabView(selection: $session.tab) {
-                Tab("Input", systemImage: "gamecontroller", value: .input) { InputView(session: session) }
-                Tab("Effects", systemImage: "waveform.path", value: .effects) { EffectsView(session: session) }
-                Tab("Audio", systemImage: "speaker.wave.2", value: .audio) { AudioView(session: session) }
-                Tab("Diagnostics", systemImage: "stethoscope", value: .diagnostics) { DiagnosticsView(session: session) }
-                Tab("Tests", systemImage: "checklist", value: .tests) { TestsView(session: session) }
-                Tab("Players", systemImage: "person.2", value: .players) { PlayersView(session: session) }
-            }
-            .padding(.top, 10)
-            Divider()
-            HStack {
-                Text(session.status).lineLimit(2).accessibilityIdentifier("sessionStatus")
-                Spacer()
-                ReportRateLabel(readings: session.readings)
-            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.vertical, 9)
-        }
-        .onAppear {
-            // macOS gives the first text field (the header's test length) focus
-            // when the window opens; start with nothing focused instead.
-            DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
-        }
-        .toolbar {
-            ToolbarItem { Button("Export Session", systemImage: "square.and.arrow.up") { session.exportReport() } }
-            ToolbarItem {
-                Button("Connection Options", systemImage: "slider.horizontal.3") { showAdvanced.toggle() }
-                    .popover(isPresented: $showAdvanced) { connectionOptions }
-            }
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    if let player = session.selectedID.flatMap(session.player(of:)) {
-                        PlayerDot(player: player, color: Color(session.playerColor(player)))
-                    }
-                    Picker("Controller", selection: Binding(get: { session.selectedID ?? "" }, set: { session.select($0.isEmpty ? nil : $0) })) {
-                        Text("Select a controller").tag("")
-                        ForEach(session.devices) { device in
-                            Text("\(device.displayName)\(device.connected ? "" : " (offline)")").tag(device.id)
-                        }
-                    }.labelsHidden().fixedSize().frame(minWidth: 210, alignment: .leading).accessibilityLabel("Selected controller").accessibilityIdentifier("selectedController")
                 }
-                HStack(spacing: 10) {
-                    Label(session.selectedDevice?.connected == true ? "Bluetooth connected" : "Bluetooth idle", systemImage: "antenna.radiowaves.left.and.right")
-                    if session.simulated {
-                        Text("SIMULATED").font(.caption2.weight(.bold)).foregroundStyle(.orange)
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background(Capsule().strokeBorder(.orange.opacity(0.6)))
-                            .accessibilityIdentifier("simulationBadge")
-                    }
-                    ControllerBatteryLabel(readings: session.readings)
-                }.font(.caption).foregroundStyle(.secondary)
+                .padding(12)
+                .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .rect(cornerRadius: 16))
+                .padding([.horizontal, .top], 16)
             }
-            if session.devices.count > 1 {
-                // Full labels when there is room, numbered dots otherwise.
-                ViewThatFits(in: .horizontal) {
-                    playerChips(compact: false)
-                    playerChips(compact: true)
+            Group {
+                switch session.tab {
+                case .input: InputView(session: session)
+                case .effects: EffectsView(session: session)
+                case .audio: AudioView(session: session)
+                case .diagnostics: DiagnosticsView(session: session)
+                case .tests: TestsView(session: session)
+                case .players: PlayersView(session: session)
                 }
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 12) {
-                ViewThatFits(in: .horizontal) {
-                    operationPill(compact: false)
-                    operationPill(compact: true)
-                }
-                DurationControl(session: session)
-                Button(role: .destructive) { Task { await session.stopAll() } } label: {
-                    Label("Stop All", systemImage: "stop.fill")
-                }.buttonStyle(.borderedProminent).tint(.red).controlSize(.large).accessibilityIdentifier("stopAll")
-                    .help("Stop every effect and return outputs to neutral (⌘.)")
+                operationPill(compact: false)
+                Divider().frame(height: 14)
+                Text(session.status).lineLimit(1).accessibilityIdentifier("sessionStatus")
+                Spacer(minLength: 12)
+                ControllerBatteryLabel(readings: session.readings)
+                ReportRateLabel(readings: session.readings)
             }
-        }.padding(.horizontal, 16).padding(.vertical, 12)
-    }
-
-    /// Quick switching between connected controllers, labelled by player.
-    private func playerChips(compact: Bool) -> some View {
-        HStack(spacing: compact ? 4 : 6) {
-            ForEach(1...session.slots.capacity, id: \.self) { player in
-                if let device = session.device(forPlayer: player) {
-                    let selected = device.id == session.selectedID
-                    Button { session.select(device.id) } label: {
-                        HStack(spacing: 5) {
-                            PlayerDot(player: player, color: Color(session.playerColor(player)), size: 18)
-                            if !compact {
-                                Text(device.model == "DualSense Edge" ? "Edge" : "DualSense").lineLimit(1).fixedSize()
-                            }
-                        }
-                        .font(.caption.weight(selected ? .semibold : .regular))
-                        .padding(.horizontal, compact ? 4 : 8).padding(.vertical, 4)
-                        .background(Capsule().fill(selected ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(.quaternary.opacity(0.6))))
-                        .opacity(device.connected ? 1 : 0.5)
-                    }
-                    .buttonStyle(.plain)
-                    .help("\(device.displayName) — player \(player)\(device.connected ? "" : " (disconnected, seat held)")")
-                    .accessibilityIdentifier("playerChip\(player)")
-                }
-            }
+            .font(.caption).foregroundStyle(.secondary)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .glassEffect(.regular, in: .capsule)
+            .padding(.horizontal, 16).padding(.bottom, 12)
         }
     }
 
@@ -134,7 +140,6 @@ struct LabRootView: View {
         .font(.callout)
         .fixedSize()
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(Capsule().fill(.quaternary.opacity(0.5)))
         .help("Effects start only when you request them. Stop All returns every output to neutral.")
     }
 
@@ -145,7 +150,10 @@ struct LabRootView: View {
             Button("Request Access") { session.requestPermission() }
             Button("Open Settings") { InputMonitoringPermission.openSystemSettings() }
             Button("Retry") { Task { await session.reconnect() } }
-        }.padding(12).background(.yellow.opacity(0.08))
+        }
+        .padding(12)
+        .glassEffect(.regular.tint(.yellow.opacity(0.15)), in: .rect(cornerRadius: 16))
+        .padding([.horizontal, .top], 16)
     }
 
     private var connectionOptions: some View {
@@ -161,6 +169,33 @@ struct LabRootView: View {
             }
             Button("Bluetooth Settings") { if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") { NSWorkspace.shared.open(url) } }
         }.formStyle(.grouped).frame(width: 360, height: 340)
+    }
+}
+
+/// A controller in the sidebar: its player number, model and connection; click to inspect it.
+private struct ControllerRow: View {
+    @Bindable var session: LabSession
+    let device: LabDevice
+
+    var body: some View {
+        let player = session.player(of: device.id)
+        Button { session.select(device.id) } label: {
+            HStack(spacing: 10) {
+                if let player { PlayerDot(player: player, color: Color(session.playerColor(player)), size: 22) }
+                else { Image(systemName: "gamecontroller").frame(width: 22) }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(device.model).lineLimit(1)
+                    Text(device.connected ? "Connected" : "Disconnected · seat held").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if device.id == session.selectedID { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.tint) }
+            }
+            .opacity(device.connected ? 1 : 0.55)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(device.displayName)\(player.map { " — player \($0)" } ?? "")")
+        .accessibilityIdentifier(player.map { "playerChip\($0)" } ?? "controller-\(device.id)")
     }
 }
 
@@ -185,11 +220,13 @@ struct DurationControl: View {
         HStack(spacing: 4) {
             Image(systemName: "timer").foregroundStyle(.secondary).accessibilityHidden(true)
             TextField("Seconds", value: $session.duration, format: .number)
-                .labelsHidden().frame(width: 46).multilineTextAlignment(.trailing)
-                .textFieldStyle(.roundedBorder).accessibilityIdentifier("testDuration")
+                .labelsHidden().frame(width: 40).multilineTextAlignment(.trailing)
+                .textFieldStyle(.plain).accessibilityIdentifier("testDuration")
                 .accessibilityLabel("Test length in seconds")
             Text("s").foregroundStyle(.secondary)
         }
+        .fixedSize()
+        .padding(.horizontal, 6)
         .help("Length of every output test, 0.1–60 seconds")
     }
 }
