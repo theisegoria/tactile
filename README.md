@@ -17,7 +17,7 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 *Tactile Lab, the companion macOS app (`App/`), shown in its simulation mode: no
 controller was connected for these captures.*
 
-> Status: 0.2.0, pre-release. All software gates (0–4) are built and unit-tested, but
+> Status: 0.3.0, pre-release. All software gates (0–4) are built and unit-tested, but
 > **nothing has been verified on a controller yet** — see `docs/receipts/` and the
 > status column in `PROTOCOL.md`.
 
@@ -101,6 +101,13 @@ C hosts use `tactile_context_get_player`, `tactile_context_assign_player` and
 bindings expose the same per-player API; Unity ships a split-screen sample. All
 controllers share the Mac's Bluetooth radio, and running audio haptics on several
 at once has not been measured on hardware.
+
+C ABI 0.3 (additive) adds the speaker (`tactile_speaker_*`: 48 kHz PCM or Opus
+packets into report 0x36 on the controller's own connection), audio routing and
+volume (`tactile_controller_set_audio`), capability bits and USB identity in
+`tactile_controller_info`, the headset state in `tactile_input_state`, and
+latency estimates in the haptics and speaker stats. Every new path rests on
+unverified protocol facts; `capabilities_unverified` says so at run time.
 
 ## Documentation
 

@@ -40,3 +40,8 @@
 | `tactile_context_get_player` | yes | no | ABI 0.2; returned handle is retained |
 | `tactile_context_assign_player`, `tactile_context_release_player` | yes | no | ABI 0.2; affected controllers get `TACTILE_EVENT_PLAYER_CHANGED` |
 | `tactile_controller_get_player` | yes | no | ABI 0.2 |
+| `tactile_controller_set_audio` | yes | no | ABI 0.3; enqueued like the other output calls; Bluetooth and USB |
+| `tactile_speaker_open` | yes | no | ABI 0.3; `TACTILE_ERR_UNSUPPORTED` over USB or without report 0x36 in the descriptor |
+| `tactile_speaker_close` | yes | briefly (waits for the stream task) | ABI 0.3; safe after `tactile_context_destroy` |
+| `tactile_speaker_write_pcm`, `_write_opus` | **one producer thread per speaker** | no | ABI 0.3; bounded queue, overflow refused and counted |
+| `tactile_speaker_flush`, `_get_stats` | yes | no | ABI 0.3 |

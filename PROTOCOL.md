@@ -54,7 +54,7 @@ Input Monitoring. See `docs/receipts/gate-0.md`.
 | Edge: Fn1, Fn2, left paddle, right paddle = bits 4–7 of buttons byte 2 (Linux driver, May 2026) | LNX | 🔬 order unverified |
 | Touch point: byte 0 bit 7 = *not* touching, bits 0–6 id; 12-bit X, 12-bit Y packed in 3 bytes; 1920×1080 | LNX, SDL | ⚠️ |
 | Status byte: low nibble battery 0–10, high nibble 0 discharging / 1 charging / 2 full / A,B,F error; percent = min(level×10+5, 100) when discharging/charging, 100 when full, 0 for error (A, B, F) and unknown states | LNX | ⚠️ |
-| Status byte 53: bit 0 headphones, bit 1 microphone | LNX | 🔬 |
+| Status byte 53: bit 0 headphones, bit 1 microphone (SDL also names bit 0 "headphone" and bit 3 "USB") | LNX, SDL | ⚠️ bit 0; 🔬 bit 1 |
 
 ## Feature reports
 
@@ -81,7 +81,10 @@ against 2.21, not the firmware version at offset 28. Tactile follows the driver
 | `valid_flag0`: bit0 compatible vibration, bit1 haptics select, bit2 right trigger, bit3 left trigger | LNX | ⚠️ |
 | `valid_flag1`: bit0 mute LED, bit1 power save (mic mute), bit2 lightbar, bit3 release LEDs, bit4 player indicator | LNX | ⚠️ |
 | `valid_flag2`: bit1 lightbar setup, bit2 compatible vibration 2 | LNX | ⚠️ |
-| Rumble: set haptics-select, plus compat-vibration (fw < 2.21) or compat-vibration-2 (≥ 2.21, Edge) | LNX | ⚠️ |
+| Rumble: set haptics-select, plus compat-vibration (fw < 2.21) or compat-vibration-2 (≥ 2.21, Edge) | LNX | ⚠️ (SDL uses compat-vibration-2 from firmware 2.24) |
+| Haptics-select (`valid_flag0` bit 1) **disables audio haptics**; a later report with the bit clear restores them. Tactile follows every rumble-off or neutral report sent while the 0x32 stream runs with a report that has the bit clear | SDL | ⚠️ |
+| SDL sends byte 1 = `0x00` on every BT 0x31 (no sequence); Linux increments the high nibble. Tactile increments; either is accepted | SDL, LNX | ⚠️ |
+| SDL sends 48-byte USB 0x02 reports; Linux and Tactile send 63 | SDL, LNX | ⚠️ |
 | Lightbar colours only apply after the firmware's own animation is released: lightbar setup byte = `0x02` with `valid_flag2` bit 1 | LNX | ⚠️ |
 | Player LED patterns 1–5: `0x04 0x0A 0x15 0x1B 0x1F`; bit 5 = switch instantly | LNX | ⚠️ |
 | Mute LED: 0 off, 1 on, 2 pulse; mic mute = power-save bit 4 | LNX | ⚠️ |
@@ -100,6 +103,18 @@ are not implemented.
 
 ## Bluetooth audio haptics — report `0x32` (clean-room from SAX facts) 🔬
 
+**Cross-check (2026-11-09, Tactile 0.3).** SDL3's `SDL_hidapi_ps5.c` and the
+Linux driver implement neither report 0x32 nor 0x36, so they cannot confirm
+these layouts. A third-party description of SAxense (Dr.QP "SAxense
+feasibility", read for facts only) agrees on: report 0x32, 141 bytes, CRC-32
+seeded with `0xA2`, 64 bytes of stereo 8-bit samples per report in a `0x12`
+sub-packet, 3000 Hz, ≈ 10.67 ms per report, and a `0x11` packet before it. It
+calls the samples unsigned in prose but feeds them signed (`-f s8`) in its
+example, so signedness stays open. It does not describe byte 1 or the
+sub-packet header bytes. No mismatch with Tactile's defaults was found; every
+row below stays 🔬 until gate 3 runs on hardware. `ReportGoldenTests` pins the
+bytes Tactile sends.
+
 | Fact | Status |
 |---|---|
 | 141 bytes, CRC-32 seeded with `0xA2` | 🔬 |
@@ -107,7 +122,7 @@ are not implemented.
 | Sub-packet `0x11` (7 bytes, last byte a running counter), then sub-packet `0x12` with 64 bytes of samples | 🔬 |
 | Sub-packet header encoding (`0x91`/`0x92`: id + "sized" bit 7, then a length byte) and the `0x11` payload (`FE 00 00 00 00 FF`) | 🔬 guessed; configurable via `HapticsFraming` |
 | 8-bit PCM, 2 channels, 3000 Hz → 32 frames per report → one report every 10.667 ms | 🔬 |
-| Signed vs unsigned samples | unknown; `HapticsFraming.signedSamples` (default signed) |
+| Signed vs unsigned samples | unknown (the SAxense description conflicts with itself); `HapticsFraming.signedSamples` (default signed) |
 | Channel 0 = left grip actuator, 1 = right | 🔬 |
 
 ## GameController facts (APPLE)
@@ -140,7 +155,8 @@ listed under "experimental") so it can be tested the moment hardware is availabl
 | Audio control bits 4–5 select the output path (0 headphones … 3 speaker); intermediate values | LNX | 🔬 | `AudioOutputPath` |
 | Volume ranges: headphone ≤ 0x7F, mic ≤ 0x40 (clamped), speaker 0–0xFF | LNX | 🔬 | `AudioSettings.encode` |
 | Speaker/headphone audio in output report `0x36` as Opus, CELT, 48 kHz stereo, 10 ms per report | OPUS | 🔬 | `SpeakerAudioReportBuilder`, `SpeakerStream` |
-| `0x36` layout: byte 1 seq/tag, then a length prefix and the Opus packet, CRC-32 (0xA2) — **guessed** | none (by analogy with 0x31/0x32) | 🔬 configurable (`SpeakerAudioFraming`) | |
+| `0x36` layout: byte 1 seq/tag, then a length prefix and the Opus packet, CRC-32 (0xA2) — **guessed**; no public reference found (SDL and Linux route controller audio over USB audio only) | none (by analogy with 0x31/0x32) | 🔬 configurable (`SpeakerAudioFraming`) | `SpeakerPump`, `tactile_speaker_*` |
+| USB audio function: 4 output channels, 1–2 speaker/headset, 3–4 left/right actuators; product strings "DualSense Wireless Controller" / "DualSense Edge Wireless Controller" | community reports; SDL (Edge name) | 🔬 | `TACTILE_USB_AUDIO_*` |
 | `0x36` length: taken from the controller's own report descriptor at runtime | — | parser tested | `HIDDescriptor` |
 | Microphone uplink as Opus at 24 kHz; report ID and layout unknown | OPUS | 🔬 found at runtime by `UplinkScanner` | `mic-scan` |
 | macOS's built-in Opus encoder produces TOC `0xF4` (CELT FB 10 ms stereo) for 48 kHz stereo — the exact format of the lead | this project, AudioToolbox | ✅ verified in software (not on device) | `OpusCodecTests` |

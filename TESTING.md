@@ -99,3 +99,36 @@ Record everything in `docs/receipts/gate-6.md`; promote confirmed facts in `PROT
 | P.4 | Move P2 to Player 1 | the two swap; lights follow |
 | P.5 | Identify on each card | only that controller rumbles briefly |
 | P.6 | Four controllers, audio haptics on all (`tactilectl haptic --effect texture` per controller) | record dropped reports and lateness per controller; note Bluetooth bandwidth limits |
+
+## Tactile 0.3 — engine hardware checklist (owner-run)
+
+For hosts that use the DualSense as their main controller over Bluetooth through
+the C ABI. Run each row on a **DualSense over Bluetooth**, then over **USB**,
+then repeat on a **DualSense Edge**. Record Pass / Fail / Unverified with notes
+in Tactile Lab › Tests (export with ⌘⇧E) or `docs/receipts/gate-0.3.md`. A
+successful write or a sent packet is not a pass: only a felt, seen or heard
+result is. Everything Tactile 0.3 added is unverified until this checklist has
+been run.
+
+| # | Where | Step | Expect / record | Confirms |
+|---|---|---|---|---|
+| H.1 | Lab › Diagnostics | Read the descriptor sizes (BT, then USB; DualSense, then Edge) | Is output report 0x36 declared? Its byte length? Note the Edge product string | `TACTILE_CAP_HID_SPEAKER`, `product` |
+| H.2 | Lab › Effects › haptics, BT | Parametric click, detent, impact; left, right, both | Crisp, on the named side; record the intensity at which each is first felt | 0x32 framing, channel 0 = left |
+| H.3 | Lab › Effects › audio-file haptics, BT | Play a 1 kHz and a 60 Hz test file | Both felt; if nothing, try the framing variants in Lab (nibble order, signed/unsigned) and write down which one works | signedness, byte 1 |
+| H.4 | Lab › Effects, BT | Start audio-file haptics, then press rumble for 2 s, then stop rumble | Audio haptics resume after the rumble stops (0.3 hand-back report). Record any gap | SDL haptics-select fact |
+| H.5 | Lab › Effects, BT | Start a haptic, press Stop All, then start a haptic again | The second haptic is felt (neutral, then hand-back) | neutral + hand-back |
+| H.6 | Lab › Diagnostics › haptics metrics, BT | Read the metrics during H.3 and 1 s after it stops | `sending` goes to 0 about 85 ms after silence; record p99 lateness, send latency and underruns | latency fields |
+| H.7 | USB | With the pad on USB, open Audio MIDI Setup and look at the pad's audio device | Name, channel count (expect 4), sample rate; for the Edge note the exact name | `TACTILE_USB_*` constants |
+| H.8 | host app, USB | Play haptics on channels 3–4 of the pad's USB audio device | Felt on the right grips; channels 1–2 silent | USB channel order |
+| H.9 | Lab › Audio, BT | Route to speaker, volume 200; play a short file | Heard from the pad's speaker? Record level and quality; vary the framing if silent | 0x36 framing, routing |
+| H.10 | Lab › Audio, BT, headphones plugged in | Route to headphones, volume 100; play | Heard in the headphones; Lab › Input shows the headphone flag | path bits, status byte 53 |
+| H.11 | host app, BT | Speaker through `tactile_speaker_*` (e.g. 44.1 kHz and 48 kHz PCM) | Heard; the lights are not reset when the speaker closes (the 0.3 speaker shares the controller's connection) | C ABI speaker |
+| H.12 | Lab › Effects | Trigger presets (feedback, weapon, vibration, slope, multi-position) on BT and USB | Each feels right and releases at the end | trigger encoders |
+| H.13 | Lab › Effects | Lightbar colour, player LEDs 1–5, mute LED on/pulse, brightness | As set; restored after the check; GameController does not overwrite them | LED bytes |
+| H.14 | Lab › Input | Rest flat, then roll, pitch and yaw | Gyro ≈ 0 at rest, signs match the motion; accel ≈ 1 g down; sensor timestamp units | IMU calibration |
+| H.15 | Lab › Input | One and two fingers on the touchpad | Coordinates 0–1919 × 0–1079, ids change per touch, active bit clears on lift | touch decoding |
+| H.16 | Lab › Input, Edge | Fn left, Fn right, left paddle, right paddle | Named indicators match, in that order | Edge bit order |
+| H.17 | Lab › Diagnostics, Edge | Read the haptics/audio rows of H.2–H.10 on the Edge | Same results as the DualSense, or note the differences | Edge parity |
+| H.18 | host app, BT | 10 minutes with haptics, triggers and speaker running together | Record pump CPU %, dropped reports and speaker `send_failures` | sustained load |
+
+Never run these from tests or CI; they are owner actions.
