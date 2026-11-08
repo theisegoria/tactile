@@ -270,6 +270,10 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
 
     public var hapticsRunning: Bool { state.withLock { $0.pump?.isRunning ?? false } }
 
+    /// True while the haptics pump is sending 0x32 reports (it goes quiet
+    /// after about 85 ms of silence). False whenever the pump is stopped.
+    public var hapticsSending: Bool { state.withLock { $0.pump?.isSending ?? false } }
+
     /// Plays a parametric effect (starts the pump if needed, with the framing
     /// of the last `startHaptics`).
     public func play(_ effect: HapticEffect, side: HapticSide = .both) async throws(TransportError) {

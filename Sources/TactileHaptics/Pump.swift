@@ -62,6 +62,14 @@ public final class HapticsPump: @unchecked Sendable {
 
     public var isRunning: Bool { running.load(ordering: .acquiring) }
 
+    /// True while the pump is actually sending reports: it is running and has
+    /// not gone quiet after `idleReportsBeforeSleep` silent reports. While this
+    /// is false the voice coils receive no 0x32 traffic from this pump, so
+    /// another writer (for example Core Haptics through GameController) is not
+    /// overridden by it.
+    public var isSending: Bool { running.load(ordering: .acquiring) && sending.load(ordering: .relaxed) }
+    private let sending = Atomic<Bool>(false)
+
     /// Starts the pump thread. No-op while already running. Safe from any thread.
     public func start() {
         while true {
@@ -163,6 +171,7 @@ public final class HapticsPump: @unchecked Sendable {
 
     private func run(generation myGen: UInt64) {
         setRealtimePolicy()
+        sending.store(true, ordering: .relaxed)
         // Publish the CPU baseline before the start time so `metrics()` never
         // pairs a new start with a stale CPU reading.
         let cpu0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
@@ -185,6 +194,7 @@ public final class HapticsPump: @unchecked Sendable {
             let underrun = mixer.render(into: &samples)
             idleCount = idle ? idleCount + 1 : 0
             let shouldSend = sendWhileIdle || idleCount <= idleReportsBeforeSleep
+            sending.store(shouldSend, ordering: .relaxed)
             // Underruns are only meaningful while a stream is actually playing.
             recorder.tick(latenessUs: lateness, intervalUs: interval, underrunFrames: idle ? 0 : underrun)
 

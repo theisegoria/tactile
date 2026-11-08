@@ -60,3 +60,24 @@ print("fw", len(fw), hx(fw))
 # haptics 0x32 seq 0 counter 0, samples k-32 for k in 0..63
 h=[0]*141; h[0]=0x32; h[1]=0x00; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,0]; h[11:13]=[0x92,64]
 h[13:77]=[ (k-32)&0xff for k in range(64)]; print("hap", hx(seal(h,0xa2)))
+
+# --- Tactile 0.3 vectors -------------------------------------------------
+# 0x32 after 15 reports: seq nibble 0xF (high nibble), control counter 15,
+# samples all 0x7f (signed +127) -> and the 16th report wraps seq to 0.
+h=[0]*141; h[0]=0x32; h[1]=0xF0; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,15]; h[11:13]=[0x92,64]
+h[13:77]=[0x7f]*64; print("hap_seq15", hx(seal(h,0xa2)))
+h=[0]*141; h[0]=0x32; h[1]=0x00; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,16]; h[11:13]=[0x92,64]
+print("hap_seq16_silent", hx(seal(h,0xa2)))
+# 0x36 speaker, test length 72 (the real length comes from the descriptor):
+# seq 0, u8 length prefix, Opus TOC 0xF4 packet f4 01 02 03 04, CRC A2.
+s=[0]*72; s[0]=0x36; s[1]=0x00; s[2]=5; s[3:8]=[0xf4,1,2,3,4]; print("spk_seq0", hx(seal(s,0xa2)))
+s=[0]*72; s[0]=0x36; s[1]=0x10; s[2]=3; s[3:6]=[0xf4,0xaa,0x55]; print("spk_seq1", hx(seal(s,0xa2)))
+# USB variant (no CRC), test length 16.
+u=[0]*16; u[0]=0x36; u[1]=0x00; u[2]=2; u[3:5]=[0xf4,9]; print("spk_usb", hx(u))
+# Audio settings: speaker volume 200, path speaker (3<<4), BT seq 0 -> flags0 0x20|0x80.
+r=[0]*78; r[0]=0x31; r[1]=0; r[2]=0x10; r[3+0]=0x20|0x80; r[3+5]=200; r[3+7]=0x30
+print("bt_audio", hx(seal(r,0xa2)))
+# Haptics hand-back: rumble off with vibration v2 (flag0 0x02, flag2 0x04), then
+# an empty report (all flags clear) with the next sequence number.
+r=[0]*78; r[0]=0x31; r[1]=0; r[2]=0x10; r[3+0]=0x02; r[3+38]=0x04; print("bt_rumble_off_v2", hx(seal(r,0xa2)))
+r=[0]*78; r[0]=0x31; r[1]=0x10; r[2]=0x10; print("bt_empty_seq1", hx(seal(r,0xa2)))

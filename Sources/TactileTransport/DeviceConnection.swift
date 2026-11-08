@@ -241,7 +241,12 @@ public actor DeviceConnection {
         // is kept rather than wiped afterwards.
         let reset = neutralOutput
         desired = OutputState()
-        guard let seq = await sendNeutral(reset) else { return }
+        guard var seq = await sendNeutral(reset) else { return }
+        // The neutral report sets the haptics-select bit to stop the motors,
+        // which also switches the voice coils away from audio haptics (SDL:
+        // "Disable audio haptics"). While the 0x32 stream owns the actuators,
+        // follow it with a report whose bit is clear to hand them back.
+        if suppressRumble, let next = try? await sendNow(desired) { seq = next }
         // Only mark clean if nothing else was sent after the neutral report.
         if seq == outputSequence { options.journal?.markClean(journalKey) }
     }
@@ -437,6 +442,9 @@ public actor DeviceConnection {
     /// A cleared valid flag leaves the motors at their last value, so turning
     /// suppression on first writes rumble off if the motors were left running;
     /// otherwise that latched rumble would add to the mixer's emulated rumble.
+    /// That rumble-off report sets valid_flag0 bit 1 (haptics select), which
+    /// also disables audio haptics until a report with the bit clear arrives
+    /// (SDL `SDL_hidapi_ps5.c`), so a second report without rumble follows it.
     public func setRumbleSuppressed(_ suppressed: Bool) async {
         let wasSuppressed = suppressRumble
         suppressRumble = suppressed
@@ -446,6 +454,10 @@ public actor DeviceConnection {
             var s = desired
             s.rumble = .off
             _ = try? await sendNow(s, honorSuppression: false)
+            // That report set the haptics-select bit, which SDL documents as
+            // disabling audio haptics; a report with the bit clear restores
+            // them, so send one before the 0x32 stream starts.
+            _ = try? await sendNow(desired)
             return
         }
         try? await flush()
