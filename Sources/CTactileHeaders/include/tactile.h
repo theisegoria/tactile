@@ -371,7 +371,7 @@ int32_t tactile_haptics_get_metrics(tactile_controller *controller, tactile_hapt
 /* ---- Audio and speaker (ABI 0.3; research-grade, unverified) -----------
  * Routing and volume go in output report 0x31 (Bluetooth) or 0x02 (USB), so
  * tactile_controller_set_audio works on both transports. Speaker audio:
- *   - Bluetooth: tactile_speaker_* encodes 48 kHz stereo as Opus (CELT, 10 ms
+ *   - Bluetooth: tactile_speaker_* encodes PCM (any rate, resampled to 48 kHz) as Opus (CELT, 10 ms
  *     packets) into output report 0x36, sized from the pad's report
  *     descriptor, on the controller's own connection (no second connection).
  *   - USB: play through the pad's USB audio device (TACTILE_USB_AUDIO_*);
@@ -389,11 +389,12 @@ int32_t tactile_controller_set_audio(tactile_controller *controller, const tacti
 int32_t tactile_speaker_open(tactile_controller *controller, const tactile_speaker_options *options, tactile_speaker **out_speaker);
 /* Stops the stream, drops queued audio and frees the handle. Blocks briefly. */
 void tactile_speaker_close(tactile_speaker *speaker);
-/* Queues 48 kHz float PCM (1 channel is duplicated; beyond 2 are dropped).
- * Non-blocking, single producer. Returns frames queued (fewer when the queue
- * is full) or a negative tactile_result. Underruns play silence; after
+/* Queues float PCM at any sample_rate (1-768000 Hz; resampled to 48 kHz when
+ * it differs). 1 channel is duplicated; beyond 2 are dropped. Non-blocking,
+ * single producer. Returns the number of 48 kHz frames queued (fewer when the
+ * queue is full) or a negative tactile_result. Underruns play silence; after
  * idle_ms of silence the stream ends and the next write restarts it. */
-int32_t tactile_speaker_write_pcm(tactile_speaker *speaker, const float *interleaved, int32_t frames, int32_t channels);
+int32_t tactile_speaker_write_pcm(tactile_speaker *speaker, const float *interleaved, int32_t frames, int32_t channels, double sample_rate);
 /* Queues one pre-encoded Opus packet (CELT, 48 kHz stereo, 10 ms). Returns
  * TACTILE_OK, TACTILE_ERR_BUSY when the queue is full, or
  * TACTILE_ERR_INVALID_ARGUMENT when it does not fit the report. */

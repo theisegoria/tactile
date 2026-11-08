@@ -108,7 +108,7 @@ int main(void) {
         memset(&st, 0, sizeof st); st.struct_size = sizeof st;
         CHECK(tactile_controller_set_audio(NULL, &a) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_open(NULL, NULL, &sp) == TACTILE_ERR_INVALID_ARGUMENT && sp == NULL);
-        CHECK(tactile_speaker_write_pcm(NULL, pcm, 1, 2) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_write_pcm(NULL, pcm, 1, 2, 48000.0) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_write_opus(NULL, pkt, 1) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_flush(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_get_stats(NULL, &st) == TACTILE_ERR_INVALID_ARGUMENT);

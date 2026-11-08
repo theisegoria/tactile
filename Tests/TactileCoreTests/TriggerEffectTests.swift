@@ -37,6 +37,13 @@ import Testing
             == hex("21 fc 03 c0 3b 01 00 00 00 00 00"))
     }
 
+    /// Same vector as Tests/CABI/header_check.c (tools/gen_vectors.py fz()).
+    @Test func multiplePositionFeedback() throws {
+        let e = try TriggerEffect.multiplePositionFeedback(strengths: [0, 0, 8, 6, 4, 3, 1, 1, 1, 1])
+        #expect(e.bytes == hex("21 fc 03 c0 3b 01 00 00 00 00 00"))
+        #expect(try TriggerEffect.multiplePositionFeedback(strengths: [Int](repeating: 0, count: 10)) == .off)
+    }
+
     @Test func multiplePositionVibration() throws {
         let e = try TriggerEffect.multiplePositionVibration(frequency: 10, amplitudes: [1, 0, 0, 0, 0, 0, 0, 0, 0, 8])
         #expect(e.bytes == hex("26 01 02 00 00 00 38 00 00 0a 00"))

@@ -535,11 +535,13 @@ public func tactile_speaker_close(_ p: OpaquePointer?) {
 }
 
 @_cdecl("tactile_speaker_write_pcm")
-public func tactile_speaker_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePointer<Float>?, _ frames: Int32, _ channels: Int32) -> Int32 {
-    guard let s = speaker(p), let samples, frames >= 0, channels > 0 else { return EINVAL }
+public func tactile_speaker_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePointer<Float>?, _ frames: Int32,
+                                      _ channels: Int32, _ rate: Double) -> Int32 {
+    guard let s = speaker(p), let samples, frames >= 0, channels > 0,
+          StreamingResampler.isSupported(rate: rate) else { return EINVAL }
     guard s.owner.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     let buffer = UnsafeBufferPointer(start: samples, count: Int(frames) * Int(channels))
-    return Int32(s.pump.write(interleaved: buffer, channels: Int(channels)))
+    return Int32(s.write(buffer, channels: Int(channels), rate: rate))
 }
 
 @_cdecl("tactile_speaker_write_opus")

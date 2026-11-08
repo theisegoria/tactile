@@ -169,6 +169,30 @@ final class SentReports: Sendable {
         _ = box.invalidate()
         await controller.close()
     }
+
+    @Test func speakerWritePCMResamplesAnyRate() async throws {
+        let (controller, box) = liveBox()
+        let pump = try SpeakerPump(framing: SpeakerAudioFraming(reportLength: 400)) { _ in }
+        let speaker = SpeakerBox(owner: box, pump: pump)
+        let handle = OpaquePointer(Unmanaged.passRetained(speaker).toOpaque())
+        let mono44 = [Float](repeating: 0.1, count: 4410)            // 100 ms at 44.1 kHz
+        let queued = mono44.withUnsafeBufferPointer {
+            TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 4410, 1, 44_100)
+        }
+        // 100 ms at 48 kHz, less the resampler's look-ahead (12 taps at the input rate).
+        #expect(queued > 4700 && queued <= 4800)
+        let stereo48 = [Float](repeating: 0, count: 960)
+        let direct = stereo48.withUnsafeBufferPointer {
+            TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 480, 2, 48_000)
+        }
+        #expect(direct == 480)
+        #expect(stereo48.withUnsafeBufferPointer {
+            TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 480, 2, 0)
+        } == TACTILE_ERR_INVALID_ARGUMENT.rawValue)
+        TactileCABI.tactile_speaker_close(handle)
+        _ = box.invalidate()
+        await controller.close()
+    }
 }
 
 private func hex(_ s: String) -> [UInt8] { s.split(separator: " ").map { UInt8($0, radix: 16)! } }

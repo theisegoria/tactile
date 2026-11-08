@@ -361,10 +361,46 @@ extension Duration {
 final class SpeakerBox: Sendable {
     let owner: ControllerBox
     let pump: SpeakerPump
+    private struct Converter {
+        var rate: Double
+        var left: StreamingResampler
+        var right: StreamingResampler
+    }
+    /// Per-channel resamplers to 48 kHz, rebuilt when the input rate changes.
+    private let converter = Mutex<Converter?>(nil)
 
     init(owner: ControllerBox, pump: SpeakerPump) {
         self.owner = owner
         self.pump = pump
+    }
+
+    /// Queues interleaved PCM at `rate`; returns 48 kHz frames queued.
+    func write(_ samples: UnsafeBufferPointer<Float>, channels: Int, rate: Double) -> Int {
+        let target = pump.format.sampleRate
+        if abs(rate - target) < 0.5 {
+            converter.withLock { $0 = nil }
+            return pump.write(interleaved: samples, channels: channels)
+        }
+        return converter.withLock { conv -> Int in
+            if conv == nil || conv!.rate != rate {
+                conv = Converter(rate: rate, left: StreamingResampler(inputRate: rate, outputRate: target),
+                                 right: StreamingResampler(inputRate: rate, outputRate: target))
+            }
+            let frames = samples.count / channels
+            var l = [Float](), r = [Float]()
+            l.reserveCapacity(frames); r.reserveCapacity(frames)
+            for i in 0..<frames {
+                l.append(samples[i * channels])
+                r.append(channels > 1 ? samples[i * channels + 1] : samples[i * channels])
+            }
+            var outL = [Float](), outR = [Float]()
+            conv!.left.process(l, into: &outL)
+            conv!.right.process(r, into: &outR)
+            let n = min(outL.count, outR.count)
+            var stereo = [Float](repeating: 0, count: n * 2)
+            for i in 0..<n { stereo[2 * i] = outL[i]; stereo[2 * i + 1] = outR[i] }
+            return stereo.withUnsafeBufferPointer { pump.write(interleaved: $0, channels: 2) }
+        }
     }
 
     /// Builds a pump whose reports go out on whatever connection the
