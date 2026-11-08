@@ -23,6 +23,12 @@ Input Monitoring. See `docs/receipts/gate-0.md`.
 | NDB | nondebug/dualsense | none | facts only |
 | OPUS | unlicensed Opus-audio repository (lead) | none | facts only, research lead |
 | APPLE | macOS 27 SDK headers (GameController, CoreHID) | — | API facts |
+| DST | daidr/dualsense-tester | MIT | facts only (0x36 layout, audio setup) |
+| BRG | matt400/dualsense-bridge (sender, PR #121) | MIT | facts only (0x32/0x36 layout, timing, CBR sizes) |
+| DS5D | awalol/DS5Dongle, as cited by KytyPS5 and BRG | MIT | facts only, second-hand (0x39, buffer bytes) |
+| LGT | GeorgLegato/LinuxAudio4Dualsense5 (from SundayMoments/DS5_Bridge) | AGPL-3.0 | **facts only**, no code |
+| KYT | KytyPS5 PR #148 | GPL-2.0 | **facts only**, no code |
+| DRQP | Dr.QP "SAxense feasibility" notes | docs | facts only (describes SAX) |
 
 ## Identification
 
@@ -117,13 +123,37 @@ bytes Tactile sends.
 
 | Fact | Status |
 |---|---|
-| 141 bytes, CRC-32 seeded with `0xA2` | 🔬 |
+| **142 bytes** including the report ID (CRC at 138–141), CRC-32 seeded with `0xA2`. SAX descriptions say "141", most likely without the ID. Tactile sizes 0x32 from the controller's descriptor when it declares one (`Controller.hapticsFraming()`) | BRG, DRQP | 🔬 (was 141 before 0.3) |
 | Byte 1: 4-bit tag + 4-bit sequence (nibble order unknown; Tactile defaults to seq high, tag `0`) | 🔬 |
 | Sub-packet `0x11` (7 bytes, last byte a running counter), then sub-packet `0x12` with 64 bytes of samples | 🔬 |
-| Sub-packet header encoding (`0x91`/`0x92`: id + "sized" bit 7, then a length byte) and the `0x11` payload (`FE 00 00 00 00 FF`) | 🔬 guessed; configurable via `HapticsFraming` |
+| Sub-packet header = id \| `0x80` ("sized"), then a length byte: `0x91 07`, `0x92 40` | BRG, LGT, DST | ⚠️ three sources agree |
+| `0x11` payload: `FE` (bit 0 clear keeps the mic uplink off) + five buffer bytes + counter. Buffer bytes: BRG `10 10 10 10 10` (reports SAX's `00 00 00 00 FF` stayed silent), DST `40`×5, DS5D `30`×5 during speaker playback, LGT/SAX `00 00 00 00 FF`. Tactile 0.3 defaults to BRG's `10`×5 | BRG, DST, LGT | 🔬 conflict; configurable via `HapticsFraming` |
 | 8-bit PCM, 2 channels, 3000 Hz → 32 frames per report → one report every 10.667 ms | 🔬 |
-| Signed vs unsigned samples | unknown (the SAxense description conflicts with itself); `HapticsFraming.signedSamples` (default signed) |
+| Samples are signed 8-bit (BRG, DST; the SAX description conflicts with itself) | ⚠️ two sources; `HapticsFraming.signedSamples` (default signed) |
+| Any rumble bit (`valid_flag0` bit 0 or 1) in a 0x31 takes the actuators out of audio-haptics mode | BRG, SDL | ⚠️ |
 | Channel 0 = left grip actuator, 1 = right | 🔬 |
+
+## Speaker / headphone audio — report `0x36` 🔬
+
+From DST, BRG and LGT (facts only; see Sources). Implemented by
+`SpeakerAudioReportBuilder` (`.subPackets`, the default), `SpeakerQueue`,
+`Controller.attachSpeaker` and `tactile_speaker_*`. Pinned byte-for-byte by
+`ReportGoldenTests`. Nothing confirmed on hardware.
+
+| Fact | Source | Status |
+|---|---|---|
+| 398 bytes including the report ID; CRC-32 (`0xA2`) little-endian in the last 4 (over bytes 0–393) | DST, BRG, LGT | ⚠️ three sources; Tactile still takes the length from the descriptor |
+| Byte 1 = sequence << 4, +1 per report, wraps at 16 | DST, BRG, LGT | ⚠️ |
+| Sub-packets with 0x32's header scheme: `0x91 07` control (`FE`, five buffer bytes, counter), `0x92 40` haptics (32 stereo signed 8-bit frames at 3 kHz), `0x93` (speaker) or `0x96` (headphones) + length + one Opus frame | DST, BRG, LGT | ⚠️ |
+| Sub-packet order: BRG puts control, haptics, audio (audio at byte 77, Opus at 79); DST and LGT also send a `0x90 3F` packet with a copy of the 0x31 common block, in different orders. Tactile follows BRG (no `0x90`) | DST, BRG, LGT | 🔬 conflict |
+| Haptics and audio share every report, so one 10.667 ms stream carries both: Tactile's haptics pump sends 0x36 while audio is queued and 0x32 otherwise | DST, BRG, LGT | 🔬 design |
+| One report every 512/48000 s = 10.667 ms (all three say 10 ms drifts or drops out). Each Opus frame encodes 480 samples as 48 kHz, so the audio is resampled to **45 kHz** (DST resamples to 45 kHz; LGT maps 512 samples to 480) | DST, BRG, LGT | ⚠️ |
+| Opus: 48 kHz **stereo** CELT, CBR 160 kb/s → fixed **200-byte** frames (LGT: "firmware expects 200 bytes"). BRG instead sends mono hybrid CBR 80 bytes (30–200), citing level dips at CELT frame edges. Tactile uses stereo CELT 200 B: macOS's encoder in CBR mode yields exactly 200-byte frames with TOC `0xF4` (verified in software) | DST, LGT; BRG differs | 🔬 conflict |
+| Speaker enable in 0x31: `valid_flag0` `0x20` (speaker volume) \| `0x80` (audio control), audio control `0x30` = speaker only (`0x10` headphones, `0x20` both, `0x00` default); LGT/KYT also set `valid_flag1` `0x80` with common byte 37 = `0x02` (+6 dB preamp), not implemented | LGT, KYT, DST | 🔬 |
+| Speaker volume: maximum `0x64` (DST, KYT, LGT); LGT's older script: only `0x3D`–`0x64` work; BRG: 0–255. Headphone maximum `0x7F` | DST, KYT, LGT, BRG | 🔬 conflict |
+| `0x91` mask bit 0 set (`FF`) makes the pad send microphone Opus back in input 0x31 (marker `0xD4`, 48 kHz mono, 10 ms) | LGT | 🔬 |
+| Report `0x39` (547 bytes, 21.333 ms): two haptics blocks and two 200-byte Opus frames per report | KYT (from DS5D) | 🔬 not implemented |
+| No feature report is needed to enable audio | BRG | 🔬 |
 
 ## GameController facts (APPLE)
 
@@ -154,8 +184,8 @@ listed under "experimental") so it can be tested the moment hardware is availabl
 | Common-block bytes 4–7 = headphone volume, speaker volume, mic volume, audio control; enabled by `valid_flag0` bits 4–7 | LNX (audio-jack work) | 🔬 | `AudioSettings` |
 | Audio control bits 4–5 select the output path (0 headphones … 3 speaker); intermediate values | LNX | 🔬 | `AudioOutputPath` |
 | Volume ranges: headphone ≤ 0x7F, mic ≤ 0x40 (clamped), speaker 0–0xFF | LNX | 🔬 | `AudioSettings.encode` |
-| Speaker/headphone audio in output report `0x36` as Opus, CELT, 48 kHz stereo, 10 ms per report | OPUS | 🔬 | `SpeakerAudioReportBuilder`, `SpeakerStream` |
-| `0x36` layout: byte 1 seq/tag, then a length prefix and the Opus packet, CRC-32 (0xA2) — **guessed**; no public reference found (SDL and Linux route controller audio over USB audio only) | none (by analogy with 0x31/0x32) | 🔬 configurable (`SpeakerAudioFraming`) | `SpeakerPump`, `tactile_speaker_*` |
+| Speaker/headphone audio in output report `0x36` as Opus: see "Speaker / headphone audio — report 0x36" above | OPUS, DST, BRG, LGT | 🔬 | `SpeakerAudioReportBuilder`, `SpeakerQueue`, `SpeakerStream` |
+| The pre-0.3 guessed layout (sequence byte, length prefix, Opus) is kept as `SpeakerAudioFraming.Layout.lengthPrefixed` for research; no source describes it. SDL and Linux implement no audio report | none | 🔬 superseded | |
 | USB audio function: 4 output channels, 1–2 speaker/headset, 3–4 left/right actuators; product strings "DualSense Wireless Controller" / "DualSense Edge Wireless Controller" | community reports; SDL (Edge name) | 🔬 | `TACTILE_USB_AUDIO_*` |
 | `0x36` length: taken from the controller's own report descriptor at runtime | — | parser tested | `HIDDescriptor` |
 | Microphone uplink as Opus at 24 kHz; report ID and layout unknown | OPUS | 🔬 found at runtime by `UplinkScanner` | `mic-scan` |

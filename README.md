@@ -102,8 +102,8 @@ bindings expose the same per-player API; Unity ships a split-screen sample. All
 controllers share the Mac's Bluetooth radio, and running audio haptics on several
 at once has not been measured on hardware.
 
-C ABI 0.3 (additive) adds the speaker (`tactile_speaker_*`: 48 kHz PCM or Opus
-packets into report 0x36 on the controller's own connection), audio routing and
+C ABI 0.3 (additive) adds the speaker (`tactile_speaker_*`: PCM at any rate or Opus
+frames in report 0x36, sent with the haptics on one 10.667 ms stream), audio routing and
 volume (`tactile_controller_set_audio`), capability bits and USB identity in
 `tactile_controller_info`, the headset state in `tactile_input_state`, and
 latency estimates in the haptics and speaker stats. Every new path rests on

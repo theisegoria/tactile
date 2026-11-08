@@ -112,17 +112,17 @@ been run.
 
 | # | Where | Step | Expect / record | Confirms |
 |---|---|---|---|---|
-| H.1 | Lab › Diagnostics | Read the descriptor sizes (BT, then USB; DualSense, then Edge) | Is output report 0x36 declared? Its byte length? Note the Edge product string | `TACTILE_CAP_HID_SPEAKER`, `product` |
+| H.1 | Lab › Diagnostics | Read the descriptor sizes (BT, then USB; DualSense, then Edge) | Output reports 0x32 and 0x36 declared? Lengths (expect 142 and 398 including the ID)? Note the Edge product string | 0x32/0x36 lengths, `product` |
 | H.2 | Lab › Effects › haptics, BT | Parametric click, detent, impact; left, right, both | Crisp, on the named side; record the intensity at which each is first felt | 0x32 framing, channel 0 = left |
-| H.3 | Lab › Effects › audio-file haptics, BT | Play a 1 kHz and a 60 Hz test file | Both felt; if nothing, try the framing variants in Lab (nibble order, signed/unsigned) and write down which one works | signedness, byte 1 |
+| H.3 | Lab › Effects › audio-file haptics, BT | Play a 1 kHz and a 60 Hz test file | Both felt. If nothing, try `HapticsFraming` variants and record which one works: control bytes `FE 10…` vs `FE 00 00 00 00 FF`, signed vs unsigned | 0x32 control bytes, signedness |
 | H.4 | Lab › Effects, BT | Start audio-file haptics, then press rumble for 2 s, then stop rumble | Audio haptics resume after the rumble stops (0.3 hand-back report). Record any gap | SDL haptics-select fact |
 | H.5 | Lab › Effects, BT | Start a haptic, press Stop All, then start a haptic again | The second haptic is felt (neutral, then hand-back) | neutral + hand-back |
 | H.6 | Lab › Diagnostics › haptics metrics, BT | Read the metrics during H.3 and 1 s after it stops | `sending` goes to 0 about 85 ms after silence; record p99 lateness, send latency and underruns | latency fields |
 | H.7 | USB | With the pad on USB, open Audio MIDI Setup and look at the pad's audio device | Name, channel count (expect 4), sample rate; for the Edge note the exact name | `TACTILE_USB_*` constants |
 | H.8 | host app, USB | Play haptics on channels 3–4 of the pad's USB audio device | Felt on the right grips; channels 1–2 silent | USB channel order |
-| H.9 | Lab › Audio, BT | Route to speaker, volume 200; play a short file | Heard from the pad's speaker? Record level and quality; vary the framing if silent | 0x36 framing, routing |
-| H.10 | Lab › Audio, BT, headphones plugged in | Route to headphones, volume 100; play | Heard in the headphones; Lab › Input shows the headphone flag | path bits, status byte 53 |
-| H.11 | host app, BT | Speaker through `tactile_speaker_*` (e.g. 44.1 kHz and 48 kHz PCM) | Heard; the lights are not reset when the speaker closes (the 0.3 speaker shares the controller's connection) | C ABI speaker |
+| H.9 | Lab › Audio, BT | Route to speaker, speaker volume 100 (0x64); play a short file (sub-packet layout, 398 bytes, 160 kb/s) | Heard from the pad's speaker? Pitch correct (45 kHz resampling) or too high/low? Gaps at a steady interval? Record level and quality. Then try speaker volume 200 | 0x36 layout, timing, volume range |
+| H.10 | Lab › Audio, BT, headphones plugged in | Route to headphones, volume 100; play | Heard in the headphones (audio sub-packet 0x96); Lab › Input shows the headphone flag | path bits, 0x96, status byte 53 |
+| H.11 | host app, BT | Speaker through `tactile_speaker_*` (44.1 kHz and 48 kHz PCM) while haptics play | Both heard and felt at once (0x36 carries both); lights not reset when the speaker closes | C ABI speaker, shared stream |
 | H.12 | Lab › Effects | Trigger presets (feedback, weapon, vibration, slope, multi-position) on BT and USB | Each feels right and releases at the end | trigger encoders |
 | H.13 | Lab › Effects | Lightbar colour, player LEDs 1–5, mute LED on/pulse, brightness | As set; restored after the check; GameController does not overwrite them | LED bytes |
 | H.14 | Lab › Input | Rest flat, then roll, pitch and yaw | Gyro ≈ 0 at rest, signs match the motion; accel ≈ 1 g down; sensor timestamp units | IMU calibration |
