@@ -20,8 +20,22 @@ STATIC_ASSERT(offsetof(tactile_options, struct_size) == 0, "struct_size first");
 STATIC_ASSERT(sizeof(tactile_trigger_effect) == 11, "trigger effect is 11 bytes");
 STATIC_ASSERT(offsetof(tactile_input_state, buttons) == 12, "buttons offset");
 STATIC_ASSERT(offsetof(tactile_input_state, gyro_dps) == 16, "gyro offset");
-STATIC_ASSERT(sizeof(tactile_input_state) == 72, "input state size");
-STATIC_ASSERT(sizeof(tactile_controller_info) == 44, "controller info size");
+/* ABI 0.3 appends fields; the 0.2 prefix must not move. */
+STATIC_ASSERT(offsetof(tactile_input_state, report_count) == 64, "0.2 input prefix");
+STATIC_ASSERT(offsetof(tactile_input_state, headphones) == 72, "0.3 headset after 0.2 prefix");
+STATIC_ASSERT(offsetof(tactile_input_state, host_time_ns) == 80, "host time offset");
+STATIC_ASSERT(sizeof(tactile_input_state) == 88, "input state size");
+STATIC_ASSERT(offsetof(tactile_controller_info, connected) == 43, "0.2 info prefix");
+STATIC_ASSERT(offsetof(tactile_controller_info, vendor_id) == 44, "0.3 identity after 0.2 prefix");
+STATIC_ASSERT(sizeof(tactile_controller_info) == 116, "controller info size");
+STATIC_ASSERT(offsetof(tactile_haptics_metrics, pump_cpu_percent) == 64, "0.2 metrics prefix");
+STATIC_ASSERT(offsetof(tactile_haptics_metrics, buffered_ms) == 72, "0.3 metrics after 0.2 prefix");
+STATIC_ASSERT(sizeof(tactile_haptics_metrics) == 104, "metrics size");
+STATIC_ASSERT(offsetof(tactile_audio_settings, struct_size) == 0, "struct_size first");
+STATIC_ASSERT(sizeof(tactile_audio_settings) == 20, "audio settings size");
+STATIC_ASSERT(offsetof(tactile_speaker_options, struct_size) == 0, "struct_size first");
+STATIC_ASSERT(offsetof(tactile_speaker_stats, struct_size) == 0, "struct_size first");
+STATIC_ASSERT(sizeof(tactile_speaker_stats) == 88, "speaker stats size");
 
 static int failures = 0;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); failures++; } } while (0)
@@ -79,6 +93,27 @@ int main(void) {
     CHECK(tactile_controller_get_player(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
     tactile_controller_release(NULL);
     tactile_context_destroy(NULL);
+    /* Audio and speaker (ABI 0.3). */
+    CHECK(TACTILE_ABI_VERSION_MINOR >= 3);
+    CHECK(TACTILE_AUDIO_PATH_SPEAKER == 3 && TACTILE_USB_AUDIO_CHANNEL_HAPTIC_LEFT == 2);
+    CHECK(TACTILE_PRODUCT_ID_DUALSENSE_EDGE == 0x0DF2);
+    CHECK(strcmp(TACTILE_USB_PRODUCT_NAME_DUALSENSE_EDGE, "DualSense Edge Wireless Controller") == 0);
+    {
+        tactile_audio_settings a;
+        tactile_speaker *sp = NULL;
+        tactile_speaker_stats st;
+        float pcm[2] = {0, 0};
+        const uint8_t pkt[1] = {0xF4};
+        memset(&a, 0, sizeof a); a.struct_size = sizeof a;
+        memset(&st, 0, sizeof st); st.struct_size = sizeof st;
+        CHECK(tactile_controller_set_audio(NULL, &a) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_open(NULL, NULL, &sp) == TACTILE_ERR_INVALID_ARGUMENT && sp == NULL);
+        CHECK(tactile_speaker_write_pcm(NULL, pcm, 1, 2) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_write_opus(NULL, pkt, 1) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_flush(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_get_stats(NULL, &st) == TACTILE_ERR_INVALID_ARGUMENT);
+        tactile_speaker_close(NULL);
+    }
 
     /* Context lifecycle without hardware: replacing/removing the callback from
      * outside a callback fences it without deadlocking, discovery-time lookups

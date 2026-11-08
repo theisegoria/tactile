@@ -153,6 +153,12 @@ final class ControllerBox: @unchecked Sendable {
             s.battery_charging = -1
         }
         s.report_count = n
+        s.headphones = st.headphonesConnected.map { $0 ? 1 : 0 } ?? -1
+        s.microphone = st.micConnected.map { $0 ? 1 : 0 } ?? -1
+        // Arrival on the uptime clock: SuspendingClock also stops during sleep.
+        let age = max(0, (SuspendingClock.now - e.timestamp).nanoseconds)
+        let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        s.host_time_ns = now > UInt64(age) ? now - UInt64(age) : now
         latest.withLock { snapshot in
             if snapshot.generation == generation { snapshot.value = s }
         }
@@ -340,6 +346,47 @@ final class ContextBox: @unchecked Sendable {
             // can land after it.
             for t in opTasks { await t.value }
             await m.shutdown()
+        }
+    }
+}
+
+extension Duration {
+    var nanoseconds: Int64 {
+        let c = components
+        return c.seconds * 1_000_000_000 + c.attoseconds / 1_000_000_000
+    }
+}
+
+/// A speaker stream on a controller's own connection (ABI 0.3).
+final class SpeakerBox: Sendable {
+    let owner: ControllerBox
+    let pump: SpeakerPump
+
+    init(owner: ControllerBox, pump: SpeakerPump) {
+        self.owner = owner
+        self.pump = pump
+    }
+
+    /// Builds a pump whose reports go out on whatever connection the
+    /// controller has at send time, so the stream survives reconnects.
+    static func open(_ owner: ControllerBox, options: SpeakerPumpOptions) -> Result<SpeakerBox, TransportError> {
+        let c = owner.controller
+        guard c.transport == .bluetooth else {
+            return .failure(.notSupported("USB speaker audio goes through the controller's USB audio device"))
+        }
+        guard let framing = c.speakerFraming(), framing.maxPacketBytes > 0 else {
+            return .failure(.notSupported("the report descriptor declares no usable output report 0x36"))
+        }
+        let send: SpeakerPump.Send = { [weak c, weak owner] report in
+            guard let owner, !owner.isInvalidated, let connection = c?.connection else {
+                throw TransportError.deviceUnavailable
+            }
+            try await connection.sendExperimentalOutputReport(report)
+        }
+        do {
+            return .success(SpeakerBox(owner: owner, pump: try SpeakerPump(framing: framing, options: options, send: send)))
+        } catch {
+            return .failure(.notSupported("Opus encoder unavailable: \(error)"))
         }
     }
 }

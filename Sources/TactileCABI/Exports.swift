@@ -150,6 +150,22 @@ public func tactile_context_wait_for_controller(_ ctx: OpaquePointer?, _ timeout
 
 // MARK: Controller
 
+/// TACTILE_CAP_* bits for `c` on its current transport.
+func capabilities(_ c: Controller, vibrationV2: Bool) -> UInt32 {
+    var caps = TACTILE_CAP_ADAPTIVE_TRIGGERS | TACTILE_CAP_LIGHTS | TACTILE_CAP_IMU | TACTILE_CAP_TOUCHPAD
+        | TACTILE_CAP_RUMBLE | TACTILE_CAP_AUDIO_ROUTING | TACTILE_CAP_HEADSET_DETECT
+    if vibrationV2 { caps |= TACTILE_CAP_VIBRATION_V2 }
+    if c.model == .dualSenseEdge { caps |= TACTILE_CAP_EDGE_CONTROLS }
+    switch c.transport {
+    case .bluetooth:
+        caps |= TACTILE_CAP_HID_HAPTICS
+        if let f = c.speakerFraming(), f.maxPacketBytes > 0 { caps |= TACTILE_CAP_HID_SPEAKER }
+    case .usb:
+        caps |= TACTILE_CAP_USB_AUDIO_HAPTICS | TACTILE_CAP_USB_AUDIO_SPEAKER
+    }
+    return caps
+}
+
 @_cdecl("tactile_controller_retain")
 public func tactile_controller_retain(_ p: OpaquePointer?) {
     guard let p else { return }
@@ -169,6 +185,7 @@ public func tactile_controller_get_info(_ p: OpaquePointer?, _ out: UnsafeMutabl
     let (address, fw, features) = blocking { () -> (String, FirmwareInfo?, FeatureSet?) in
         (await c.address?.description ?? "", await c.firmware, await c.connection?.features)
     }
+    let info = c.info
     var i = tactile_controller_info()
     i.model = Int32(c.model == .dualSenseEdge ? TACTILE_MODEL_DUALSENSE_EDGE.rawValue : TACTILE_MODEL_DUALSENSE.rawValue)
     i.transport = Int32(c.transport == .usb ? TACTILE_TRANSPORT_USB.rawValue : TACTILE_TRANSPORT_BLUETOOTH.rawValue)
@@ -182,6 +199,19 @@ public func tactile_controller_get_info(_ p: OpaquePointer?, _ out: UnsafeMutabl
     i.update_version = fw?.updateVersion ?? 0
     i.vibration_v2 = features?.vibrationV2 == true ? 1 : 0
     i.connected = b.isLive ? 1 : 0
+    i.vendor_id = UInt16(DeviceIDs.sonyVendorID)
+    i.product_id = UInt16(c.model == .dualSenseEdge ? DeviceIDs.dualSenseEdgeProductID : DeviceIDs.dualSenseProductID)
+    i.capabilities = capabilities(c, vibrationV2: features?.vibrationV2 == true)
+    // Nothing is confirmed on hardware yet (PROTOCOL.md): every bit is unverified.
+    i.capabilities_unverified = i.capabilities
+    withUnsafeMutableBytes(of: &i.product) { dst in
+        // Shorten by whole characters so no UTF-8 sequence is cut in half.
+        var product = info.product ?? ""
+        while product.utf8.count > dst.count - 1 { product.removeLast() }
+        let bytes = Array(product.utf8)
+        for (k, v) in bytes.enumerated() { dst[k] = v }
+        dst[bytes.count] = 0
+    }
     copyOut(i, to: out)
     return OK
 }
@@ -376,6 +406,11 @@ public func tactile_haptics_get_metrics(_ p: OpaquePointer?, _ out: UnsafeMutabl
     r.send_latency_mean_us = m.sendLatencyMeanUs
     r.send_latency_p99_us = m.sendLatencyP99Us
     r.pump_cpu_percent = m.pumpCPUPercent
+    r.buffered_ms = m.bufferedMs
+    r.report_period_us = HapticsFormat.reportPeriodSeconds * 1e6
+    r.estimated_latency_ms = m.bufferedMs + HapticsFormat.reportPeriodSeconds * 1000 + m.sendLatencyMeanUs / 1000
+    r.running = b.controller.hapticsRunning ? 1 : 0
+    r.sending = b.controller.hapticsSending ? 1 : 0
     copyOut(r, to: out)
     return OK
 }
@@ -426,4 +461,124 @@ public func tactile_context_release_player(_ ctx: OpaquePointer?, _ player: Int3
 public func tactile_controller_get_player(_ p: OpaquePointer?) -> Int32 {
     guard let b = controller(p) else { return EINVAL }
     return b.player.load(ordering: .relaxed)
+}
+
+// MARK: Audio and speaker (ABI 0.3)
+
+/// Reads an optional Int32 field of a struct_size-prefixed caller struct.
+private func field<T>(_ p: UnsafePointer<T>, _ key: KeyPath<T, Int32>, default d: Int32) -> Int32 {
+    guard let offset = MemoryLayout<T>.offset(of: key) else { return d }
+    let size = Int(UnsafeRawPointer(p).load(as: UInt32.self))
+    guard size >= offset + 4 else { return d }
+    return p.pointee[keyPath: key]
+}
+
+@_cdecl("tactile_controller_set_audio")
+public func tactile_controller_set_audio(_ p: OpaquePointer?, _ settings: UnsafePointer<tactile_audio_settings>?) -> Int32 {
+    guard let b = controller(p), let settings else { return EINVAL }
+    let hp = field(settings, \.headphone_volume, default: -1)
+    let sp = field(settings, \.speaker_volume, default: -1)
+    let mic = field(settings, \.mic_volume, default: -1)
+    let path = field(settings, \.output_path, default: -1)
+    guard hp >= -1, sp >= -1, mic >= -1, path >= -1 else { return EINVAL }
+    var a = AudioSettings()
+    if hp >= 0 { a.headphoneVolume = UInt8(min(hp, 0x7F)) }
+    if sp >= 0 { a.speakerVolume = UInt8(min(sp, 0xFF)) }
+    if mic >= 0 { a.micVolume = UInt8(min(mic, 0x40)) }
+    if path >= 0 {
+        guard let route = AudioOutputPath(rawValue: UInt8(clamping: path)), path <= 3 else { return EINVAL }
+        a.outputPath = route
+    }
+    guard a != AudioSettings() else { return b.isLive ? OK : TACTILE_ERR_NOT_CONNECTED.rawValue }
+    let c = b.controller
+    let settingsCopy = a
+    return b.enqueue { () async throws(TransportError) in try await c.setAudio(settingsCopy) }
+}
+
+private func speaker(_ p: OpaquePointer?) -> SpeakerBox? {
+    p.map { Unmanaged<SpeakerBox>.fromOpaque(UnsafeRawPointer($0)).takeUnretainedValue() }
+}
+
+@_cdecl("tactile_speaker_open")
+public func tactile_speaker_open(_ p: OpaquePointer?, _ options: UnsafePointer<tactile_speaker_options>?,
+                                 _ out: UnsafeMutablePointer<OpaquePointer?>?) -> Int32 {
+    guard let b = controller(p), let out else { return EINVAL }
+    var o = SpeakerPumpOptions()
+    if let options {
+        let rate = field(options, \.bit_rate, default: 0)
+        let queue = field(options, \.queue_ms, default: 0)
+        let idle = field(options, \.idle_ms, default: 0)
+        guard rate >= 0, queue >= 0, idle >= 0 else { return EINVAL }
+        if rate > 0 {
+            guard (6_000...510_000).contains(rate) else { return EINVAL }
+            o.bitRate = Int(rate)
+        }
+        if queue > 0 { o.queueMilliseconds = Int(min(queue, 2_000)) }
+        if idle > 0 { o.idleMilliseconds = Int(min(idle, 10_000)) }
+    }
+    guard b.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    switch SpeakerBox.open(b, options: o) {
+    case .success(let s):
+        out.pointee = OpaquePointer(Unmanaged.passRetained(s).toOpaque())
+        return OK
+    case .failure(let e):
+        return code(e)
+    }
+}
+
+@_cdecl("tactile_speaker_close")
+public func tactile_speaker_close(_ p: OpaquePointer?) {
+    guard let p, let s = speaker(p) else { return }
+    let pump = s.pump
+    blocking { await pump.close() }
+    Unmanaged<SpeakerBox>.fromOpaque(UnsafeRawPointer(p)).release()
+}
+
+@_cdecl("tactile_speaker_write_pcm")
+public func tactile_speaker_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePointer<Float>?, _ frames: Int32, _ channels: Int32) -> Int32 {
+    guard let s = speaker(p), let samples, frames >= 0, channels > 0 else { return EINVAL }
+    guard s.owner.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    let buffer = UnsafeBufferPointer(start: samples, count: Int(frames) * Int(channels))
+    return Int32(s.pump.write(interleaved: buffer, channels: Int(channels)))
+}
+
+@_cdecl("tactile_speaker_write_opus")
+public func tactile_speaker_write_opus(_ p: OpaquePointer?, _ packet: UnsafePointer<UInt8>?, _ size: Int32) -> Int32 {
+    guard let s = speaker(p), let packet, size > 0 else { return EINVAL }
+    guard s.owner.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
+    guard Int(size) <= s.pump.framing.maxPacketBytes else { return EINVAL }
+    return s.pump.write(opusPacket: Array(UnsafeBufferPointer(start: packet, count: Int(size))))
+        ? OK : TACTILE_ERR_BUSY.rawValue
+}
+
+@_cdecl("tactile_speaker_flush")
+public func tactile_speaker_flush(_ p: OpaquePointer?) -> Int32 {
+    guard let s = speaker(p) else { return EINVAL }
+    s.pump.flush()
+    return s.owner.isInvalidated ? TACTILE_ERR_NOT_CONNECTED.rawValue : OK
+}
+
+@_cdecl("tactile_speaker_get_stats")
+public func tactile_speaker_get_stats(_ p: OpaquePointer?, _ out: UnsafeMutablePointer<tactile_speaker_stats>?) -> Int32 {
+    guard let s = speaker(p), let out else { return EINVAL }
+    copyOut(speakerStats(s.pump), to: out)
+    return s.owner.isInvalidated ? TACTILE_ERR_NOT_CONNECTED.rawValue : OK
+}
+
+func speakerStats(_ pump: SpeakerPump) -> tactile_speaker_stats {
+    let st = pump.stats
+    var r = tactile_speaker_stats()
+    r.streaming = st.streaming ? 1 : 0
+    r.packets_sent = st.packetsSent
+    r.silence_packets = st.silencePackets
+    r.frames_dropped = st.framesDropped
+    r.packets_dropped_oversize = st.packetsDroppedOversize
+    r.send_failures = st.sendFailures
+    r.queued_frames = UInt32(clamping: st.queuedFrames)
+    r.max_packet_bytes = UInt32(clamping: pump.framing.maxPacketBytes)
+    r.largest_packet = UInt32(clamping: st.largestPacket)
+    r.queued_ms = st.queuedMilliseconds
+    r.send_latency_mean_us = st.sendLatencyMeanUs
+    r.estimated_latency_ms = st.estimatedLatencyMilliseconds
+    return r
 }
