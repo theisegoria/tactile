@@ -25,12 +25,16 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
         var pump: HapticsPump?
         var sink: ConnectionHapticsSink?
         var rumble: Rumble = .off
-        /// The framing of the last `startHaptics`, reused by reconnects and `play`.
-        var framing: HapticsFraming = .documented
+        /// The framing of the last `startHaptics`, reused by reconnects and
+        /// `play`; nil until then (the descriptor-sized default is used).
+        var framing: HapticsFraming?
         /// Kept after a disconnect so owned state can be re-applied on reconnect.
         var lastConnection: DeviceConnection?
         /// Haptics were started and not stopped since; restart on reconnect.
         var hapticsWanted = false
+        /// Speaker stream carried in report 0x36 by the haptics pump.
+        var speakerSource: (any SpeakerPacketSource)?
+        var speakerFraming: SpeakerAudioFraming?
     }
     private let state: Mutex<State>
     /// Serialises everything that changes haptics ownership or rumble routing
@@ -202,15 +206,17 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
     /// anything is playing). Legacy rumble moves onto the voice coils. No-op
     /// while already running; to change `framing`, stop first. The framing is
     /// remembered and reused when haptics restart after a reconnect.
-    public func startHaptics(framing: HapticsFraming = .documented) async throws(TransportError) {
+    /// With `framing` nil the 0x32 length comes from the controller's descriptor.
+    public func startHaptics(framing: HapticsFraming? = nil) async throws(TransportError) {
         try await gate.run { () async throws(TransportError) in
             try await startHapticsLocked(framing: framing)
         }
     }
 
     /// Caller holds `gate`.
-    private func startHapticsLocked(framing: HapticsFraming) async throws(TransportError) {
+    private func startHapticsLocked(framing requested: HapticsFraming?) async throws(TransportError) {
         let c = try conn()
+        let framing = requested ?? hapticsFraming()
         guard transport == .bluetooth else {
             throw .notSupported("audio haptics over USB go through the controller's USB audio interface")
         }
@@ -218,6 +224,7 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
             guard s.pump == nil, s.connection === c else { return nil }
             let sink = ConnectionHapticsSink(connection: c)
             let p = HapticsPump(mixer: haptics, sink: sink, framing: framing)
+            p.setSpeaker(s.speakerSource, framing: s.speakerFraming)
             s.sink = sink
             s.pump = p
             s.framing = framing
@@ -267,6 +274,27 @@ public final class Controller: Sendable, Identifiable, CustomStringConvertible {
         pump?.stop()
         sink?.close()
     }
+
+    /// Records the speaker attachment and hands it to the running pump.
+    func setSpeakerSource(_ source: (any SpeakerPacketSource)?, framing: SpeakerAudioFraming?) {
+        state.withLock { s in
+            s.speakerSource = source
+            s.speakerFraming = framing
+            s.pump?.setSpeaker(source, framing: framing)
+        }
+    }
+
+    func clearSpeakerSource(ifIdenticalTo source: any SpeakerPacketSource) {
+        state.withLock { s in
+            guard let current = s.speakerSource, current === source else { return }
+            s.speakerSource = nil
+            s.speakerFraming = nil
+            s.pump?.setSpeaker(nil, framing: nil)
+        }
+    }
+
+    /// Reports 0x36 the current pump has sent (0 when stopped).
+    public var speakerReportCount: UInt64 { state.withLock { $0.pump?.speakerReportCount ?? 0 } }
 
     public var hapticsRunning: Bool { state.withLock { $0.pump?.isRunning ?? false } }
 

@@ -70,7 +70,9 @@ public final class OpusEncoder: @unchecked Sendable {
 
     /// - Parameter bitRate: bits per second; snapped to the nearest bitrate the
     ///   system encoder supports. Lower rates give smaller packets.
-    public init(format: OpusStreamFormat = .speaker, bitRate: Int = 96_000) throws(OpusCodecError) {
+    ///   - constantBitRate: CBR, so every packet has the same size (160 kb/s
+    ///     stereo at 10 ms gives 200-byte CELT frames, as report 0x36 expects).
+    public init(format: OpusStreamFormat = .speaker, bitRate: Int = 96_000, constantBitRate: Bool = false) throws(OpusCodecError) {
         guard (6_000...512_000).contains(bitRate) else {
             throw .unsupportedFormat("bitrate must be 6000…512000 bits/s")
         }
@@ -79,6 +81,7 @@ public final class OpusEncoder: @unchecked Sendable {
         guard let c = AVAudioConverter(from: pcm, to: opus) else {
             throw .unsupportedFormat("no system Opus encoder for \(format)")
         }
+        if constantBitRate { c.bitRateStrategy = AVAudioBitRateStrategy_Constant }
         if let rates = c.applicableEncodeBitRates?.map(\.intValue), !rates.isEmpty {
             c.bitRate = rates.min { abs($0 - bitRate) < abs($1 - bitRate) } ?? bitRate
         } else {

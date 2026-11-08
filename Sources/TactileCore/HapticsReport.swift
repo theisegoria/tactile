@@ -9,8 +9,11 @@
 /// Framing parameters for report 0x32. Defaults are the documented values;
 /// all are UNVERIFIED until confirmed on hardware (see TESTING.md).
 public struct HapticsFraming: Sendable, Hashable, Codable {
-    /// Total report length including report ID and CRC.
-    public var reportLength: Int = 141
+    /// Total report length including report ID and CRC. dualsense-bridge
+    /// (MIT) sends 142 bytes (CRC at 138); SAxense descriptions say "141",
+    /// most likely without the report ID. The controller's descriptor wins
+    /// at run time (`Controller.hapticsFraming()`).
+    public var reportLength: Int = 142
     /// 4-bit tag placed in byte 1 alongside the sequence number.
     public var tag: UInt8 = 0x0
     /// When true the sequence number occupies the high nibble of byte 1 and the
@@ -18,8 +21,11 @@ public struct HapticsFraming: Sendable, Hashable, Codable {
     public var sequenceInHighNibble: Bool = true
     /// Sub-packet header byte for the control sub-packet (id 0x11, "sized" bit 7).
     public var controlHeader: UInt8 = 0x91
-    /// Payload of the 7-byte control sub-packet, excluding the trailing counter.
-    public var controlPayload: [UInt8] = [0xFE, 0x00, 0x00, 0x00, 0x00, 0xFF]
+    /// Payload of the 7-byte control sub-packet, excluding the trailing
+    /// counter: 0xFE (bit 0 clear = microphone uplink off) and five buffer
+    /// bytes. dualsense-bridge uses 16 in all five and reports that
+    /// SAxense's `00 00 00 00 FF` stayed silent for it; daidr uses 0x40.
+    public var controlPayload: [UInt8] = [0xFE, 0x10, 0x10, 0x10, 0x10, 0x10]
     /// Sub-packet header byte for the sample sub-packet (id 0x12, "sized" bit 7).
     public var samplesHeader: UInt8 = 0x92
     /// Samples are signed two's-complement when true, offset-binary when false.

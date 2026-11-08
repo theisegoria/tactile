@@ -503,18 +503,24 @@ private func speaker(_ p: OpaquePointer?) -> SpeakerBox? {
 public func tactile_speaker_open(_ p: OpaquePointer?, _ options: UnsafePointer<tactile_speaker_options>?,
                                  _ out: UnsafeMutablePointer<OpaquePointer?>?) -> Int32 {
     guard let b = controller(p), let out else { return EINVAL }
-    var o = SpeakerPumpOptions()
+    var o = SpeakerQueueOptions()
     if let options {
         let rate = field(options, \.bit_rate, default: 0)
         let queue = field(options, \.queue_ms, default: 0)
         let idle = field(options, \.idle_ms, default: 0)
+        let dest = field(options, \.destination, default: 0)
         guard rate >= 0, queue >= 0, idle >= 0 else { return EINVAL }
         if rate > 0 {
-            guard (6_000...510_000).contains(rate) else { return EINVAL }
+            guard (6_000...512_000).contains(rate) else { return EINVAL }
             o.bitRate = Int(rate)
         }
         if queue > 0 { o.queueMilliseconds = Int(min(queue, 2_000)) }
         if idle > 0 { o.idleMilliseconds = Int(min(idle, 10_000)) }
+        switch dest {
+        case Int32(TACTILE_SPEAKER_DESTINATION_SPEAKER.rawValue): o.destination = .speaker
+        case Int32(TACTILE_SPEAKER_DESTINATION_HEADPHONES.rawValue): o.destination = .headphones
+        default: return EINVAL
+        }
     }
     guard b.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
     switch SpeakerBox.open(b, options: o) {
@@ -529,8 +535,7 @@ public func tactile_speaker_open(_ p: OpaquePointer?, _ options: UnsafePointer<t
 @_cdecl("tactile_speaker_close")
 public func tactile_speaker_close(_ p: OpaquePointer?) {
     guard let p, let s = speaker(p) else { return }
-    let pump = s.pump
-    blocking { await pump.close() }
+    s.close()
     Unmanaged<SpeakerBox>.fromOpaque(UnsafeRawPointer(p)).release()
 }
 
@@ -548,39 +553,52 @@ public func tactile_speaker_write_pcm(_ p: OpaquePointer?, _ samples: UnsafePoin
 public func tactile_speaker_write_opus(_ p: OpaquePointer?, _ packet: UnsafePointer<UInt8>?, _ size: Int32) -> Int32 {
     guard let s = speaker(p), let packet, size > 0 else { return EINVAL }
     guard s.owner.isLive else { return TACTILE_ERR_NOT_CONNECTED.rawValue }
-    guard Int(size) <= s.pump.framing.maxPacketBytes else { return EINVAL }
-    return s.pump.write(opusPacket: Array(UnsafeBufferPointer(start: packet, count: Int(size))))
+    guard Int(size) <= s.framing.maxPacketBytes else { return EINVAL }
+    return s.queue.write(opusPacket: Array(UnsafeBufferPointer(start: packet, count: Int(size))))
         ? OK : TACTILE_ERR_BUSY.rawValue
+}
+
+@_cdecl("tactile_speaker_set_destination")
+public func tactile_speaker_set_destination(_ p: OpaquePointer?, _ destination: Int32) -> Int32 {
+    guard let s = speaker(p) else { return EINVAL }
+    switch destination {
+    case Int32(TACTILE_SPEAKER_DESTINATION_SPEAKER.rawValue): s.queue.destination = .speaker
+    case Int32(TACTILE_SPEAKER_DESTINATION_HEADPHONES.rawValue): s.queue.destination = .headphones
+    default: return EINVAL
+    }
+    return s.owner.isInvalidated ? TACTILE_ERR_NOT_CONNECTED.rawValue : OK
 }
 
 @_cdecl("tactile_speaker_flush")
 public func tactile_speaker_flush(_ p: OpaquePointer?) -> Int32 {
     guard let s = speaker(p) else { return EINVAL }
-    s.pump.flush()
+    s.queue.flush()
     return s.owner.isInvalidated ? TACTILE_ERR_NOT_CONNECTED.rawValue : OK
 }
 
 @_cdecl("tactile_speaker_get_stats")
 public func tactile_speaker_get_stats(_ p: OpaquePointer?, _ out: UnsafeMutablePointer<tactile_speaker_stats>?) -> Int32 {
     guard let s = speaker(p), let out else { return EINVAL }
-    copyOut(speakerStats(s.pump), to: out)
+    copyOut(speakerStats(s), to: out)
     return s.owner.isInvalidated ? TACTILE_ERR_NOT_CONNECTED.rawValue : OK
 }
 
-func speakerStats(_ pump: SpeakerPump) -> tactile_speaker_stats {
-    let st = pump.stats
+func speakerStats(_ s: SpeakerBox) -> tactile_speaker_stats {
+    let st = s.queue.stats
+    let m = s.owner.controller.hapticsMetrics()
+    let periodMs = SpeakerAudioFraming.packetPeriodSeconds * 1000
     var r = tactile_speaker_stats()
     r.streaming = st.streaming ? 1 : 0
-    r.packets_sent = st.packetsSent
+    r.packets_sent = st.packetsTaken
     r.silence_packets = st.silencePackets
     r.frames_dropped = st.framesDropped
     r.packets_dropped_oversize = st.packetsDroppedOversize
-    r.send_failures = st.sendFailures
+    r.send_failures = UInt64(m?.reportsDropped ?? 0) + st.encodeFailures
     r.queued_frames = UInt32(clamping: st.queuedFrames)
-    r.max_packet_bytes = UInt32(clamping: pump.framing.maxPacketBytes)
+    r.max_packet_bytes = UInt32(clamping: s.framing.maxPacketBytes)
     r.largest_packet = UInt32(clamping: st.largestPacket)
     r.queued_ms = st.queuedMilliseconds
-    r.send_latency_mean_us = st.sendLatencyMeanUs
-    r.estimated_latency_ms = st.estimatedLatencyMilliseconds
+    r.send_latency_mean_us = m?.sendLatencyMeanUs ?? 0
+    r.estimated_latency_ms = st.queuedMilliseconds + periodMs + r.send_latency_mean_us / 1000
     return r
 }

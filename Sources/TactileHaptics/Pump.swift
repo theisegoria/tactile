@@ -26,6 +26,16 @@ public final class HapticsPump: @unchecked Sendable {
 
     /// Only touched by the pump thread; runs never overlap (see `stop`).
     private var builder: HapticsReportBuilder
+    /// Builds 0x36 while a speaker source is attached; pump thread only.
+    private var speakerBuilder: SpeakerAudioReportBuilder?
+    private struct Speaker: @unchecked Sendable {
+        var source: (any SpeakerPacketSource)?
+        var framing: SpeakerAudioFraming?
+        var generation: UInt64 = 0
+    }
+    private let speaker = Mutex(Speaker())
+    private var speakerGeneration: UInt64 = 0
+    private let speakerReports = Atomic<UInt64>(0)
     private let recorder = MetricsRecorder()
     private let sendWhileIdleFlag: Atomic<Bool>
     private let running = Atomic<Bool>(false)
@@ -61,6 +71,21 @@ public final class HapticsPump: @unchecked Sendable {
     }
 
     public var isRunning: Bool { running.load(ordering: .acquiring) }
+
+    /// Attaches (or with nil, detaches) a speaker stream. While the source
+    /// returns frames, each tick sends report 0x36 carrying the tick's
+    /// haptics and one audio frame instead of report 0x32; otherwise 0x32 as
+    /// before. Safe from any thread.
+    public func setSpeaker(_ source: (any SpeakerPacketSource)?, framing: SpeakerAudioFraming?) {
+        speaker.withLock { s in
+            s.source = framing == nil ? nil : source
+            s.framing = source == nil ? nil : framing
+            s.generation &+= 1
+        }
+    }
+
+    /// Reports 0x36 built since the pump was created.
+    public var speakerReportCount: UInt64 { speakerReports.load(ordering: .relaxed) }
 
     /// True while the pump is actually sending reports: it is running and has
     /// not gone quiet after `idleReportsBeforeSleep` silent reports. While this
@@ -167,6 +192,18 @@ public final class HapticsPump: @unchecked Sendable {
         }
     }
 
+    /// Pump thread only: the attached source's next frame, rebuilding the
+    /// 0x36 builder when the attachment changed.
+    private func nextSpeakerPacket() -> SpeakerPacket? {
+        let (source, framing, gen) = speaker.withLock { ($0.source, $0.framing, $0.generation) }
+        if gen != speakerGeneration {
+            speakerGeneration = gen
+            speakerBuilder = framing.map { SpeakerAudioReportBuilder(framing: $0) }
+        }
+        guard let source, speakerBuilder != nil else { return nil }
+        return source.nextPacket()
+    }
+
     private func isCurrent(_ gen: UInt64) -> Bool { generation.load(ordering: .acquiring) == gen }
 
     private func run(generation myGen: UInt64) {
@@ -193,7 +230,8 @@ public final class HapticsPump: @unchecked Sendable {
             let idle = mixer.isIdle
             let underrun = mixer.render(into: &samples)
             idleCount = idle ? idleCount + 1 : 0
-            let shouldSend = sendWhileIdle || idleCount <= idleReportsBeforeSleep
+            let audio = nextSpeakerPacket()
+            let shouldSend = audio != nil || sendWhileIdle || idleCount <= idleReportsBeforeSleep
             sending.store(shouldSend, ordering: .relaxed)
             // Underruns are only meaningful while a stream is actually playing.
             recorder.tick(latenessUs: lateness, intervalUs: interval, underrunFrames: idle ? 0 : underrun)
@@ -202,7 +240,15 @@ public final class HapticsPump: @unchecked Sendable {
                 if inFlight.load(ordering: .acquiring) >= maxInFlight {
                     recorder.dropped()  // never queue stale haptics behind a stalled link
                 } else {
-                    let report = builder.build(samples: samples)
+                    let report: [UInt8]
+                    if let audio, var sb = speakerBuilder,
+                       let r = try? sb.build(opusPacket: audio.opus, haptics: samples, destination: audio.destination) {
+                        speakerBuilder = sb
+                        speakerReports.add(1, ordering: .relaxed)
+                        report = r
+                    } else {
+                        report = builder.build(samples: samples)
+                    }
                     let built = mach_absolute_time()
                     inFlight.add(1, ordering: .acquiringAndReleasing)
                     sink.submit(report) { [self] ok in

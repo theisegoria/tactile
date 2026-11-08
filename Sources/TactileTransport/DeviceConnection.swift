@@ -522,12 +522,15 @@ public actor DeviceConnection {
         return seq
     }
 
-    /// Sends an audio-haptics report 0x32 (Bluetooth only). The report must
-    /// already carry a valid CRC; invalid reports are rejected, never sent.
+    /// Sends an audio-haptics report 0x32, or the combined haptics + speaker
+    /// report 0x36, on the haptics pump's grid (Bluetooth only). The report
+    /// must already carry a valid CRC; invalid reports are rejected, never sent.
     public func sendHapticsReport(_ report: [UInt8]) async throws(TransportError) {
         guard isOpen, !closing else { throw .closed }
         guard info.transport == .bluetooth else { throw .notSupported("audio haptics over USB use the USB audio interface") }
-        guard report.first == HapticsFormat.reportID else { throw .notSupported("not a 0x32 report") }
+        guard report.first == HapticsFormat.reportID || report.first == 0x36 else {
+            throw .notSupported("not a 0x32 or 0x36 report")
+        }
         try await setReport(report)
     }
 

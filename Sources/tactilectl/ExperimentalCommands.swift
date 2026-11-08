@@ -151,7 +151,7 @@ enum ExperimentalCommands {
     static func speaker(_ c: Controller, _ a: [String]) async throws {
         print(banner)
         guard let path = positional(a, valueFlags: ["--gain", "--bitrate", "--report-length", "--speaker", "--path"]).first else {
-            throw CLIError("usage: speaker <file> [--gain G] [--bitrate BPS] [--report-length N] [--speaker 0-255] [--path speaker|headphones]")
+            throw CLIError("usage: speaker <file> [--gain G] [--bitrate BPS] [--report-length N] [--speaker 0-100] [--path speaker|headphones]")
         }
         let gain = try option(a, "--gain").map { v -> Float in
             guard let g = Float(v), g.isFinite, g >= 0, g <= 8 else { throw CLIError("--gain must be 0…8") }
@@ -160,19 +160,21 @@ enum ExperimentalCommands {
         let bitRate = try option(a, "--bitrate").map { v -> Int in
             guard let b = Int(v), b >= 6000, b <= 512_000 else { throw CLIError("--bitrate must be 6000…512000") }
             return b
-        } ?? 96_000
+        } ?? SpeakerAudioFraming.opusBitRate
         var framing = c.speakerFraming()
         if let n = option(a, "--report-length") {
             guard let len = Int(n), len >= 8, len <= 1024 else { throw CLIError("--report-length must be 8…1024") }
             framing = SpeakerAudioFraming(reportLength: len)
             framing?.crc = c.transport == .bluetooth
         }
-        guard let framing else {
+        guard var framing else {
             throw CLIError("the descriptor declares no output report 0x36; pass --report-length to try anyway")
         }
+        let headphones = option(a, "--path") == "headphones"
+        framing.destination = headphones ? .headphones : .speaker
         // Route to the speaker unless told otherwise.
-        let routing = AudioSettings(speakerVolume: try byte(a, "--speaker") ?? 0xC0,
-                                    outputPath: option(a, "--path") == "headphones" ? .headphones : .speaker)
+        let routing = AudioSettings(speakerVolume: try byte(a, "--speaker") ?? 0x64,
+                                    outputPath: headphones ? .headphones : .speaker)
         try await c.setAudio(routing)
         print("report 0x36: \(framing.reportLength) bytes, max Opus packet \(framing.maxPacketBytes) B, bitrate \(bitRate)")
         let stats = try await c.playSpeakerAudio(url: URL(fileURLWithPath: path), framing: framing, bitRate: bitRate, gain: gain)

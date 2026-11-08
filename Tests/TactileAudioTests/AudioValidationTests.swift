@@ -68,7 +68,7 @@ import TactileCore
     }
 
     @Test func droppedSpeakerPacketsStillConsumePlaybackTime() async throws {
-        let stream = SpeakerStream(framing: .init(reportLength: 8), bitRate: 256_000) { _ in }
+        let stream = SpeakerStream(framing: .init(reportLength: 100)) { _ in }
         let start = ContinuousClock.now
         let stats = try await stream.play(chunks: (0..<10).map { _ in Array(repeating: Float(0.1), count: 960) })
         #expect(stats.packetsDroppedOversize >= 10)

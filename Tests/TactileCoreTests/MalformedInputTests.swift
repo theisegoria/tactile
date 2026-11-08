@@ -43,13 +43,16 @@ import Testing
 
     @Test func speakerValidatesWholeLayoutBeforeAllocation() {
         for length in [Int.min, -1, 0, 1, 2, 3, 4, 5, 6, 7, Int.max] {
-            var framing = SpeakerAudioFraming(reportLength: length)
+            var framing = SpeakerAudioFraming.legacy(length)
             framing.lengthPrefix = .u16LittleEndian
             var builder = SpeakerAudioReportBuilder(framing: framing)
             #expect(!framing.isValid)
             #expect(throws: SpeakerAudioReportBuilder.BuildError.self) { try builder.build(opusPacket: []) }
         }
-        var f = SpeakerAudioFraming(reportLength: 400)
+        for length in [Int.min, -1, 0, 79, 83, Int.max] {
+            #expect(!SpeakerAudioFraming(reportLength: length).isValid)   // sub-packet layout
+        }
+        var f = SpeakerAudioFraming.legacy(400)
         #expect(f.maxPacketBytes == 255)
         var builder = SpeakerAudioReportBuilder(framing: f)
         #expect(throws: SpeakerAudioReportBuilder.BuildError.packetTooLarge(size: 256, max: 255)) {

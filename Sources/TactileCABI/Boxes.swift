@@ -357,29 +357,32 @@ extension Duration {
     }
 }
 
-/// A speaker stream on a controller's own connection (ABI 0.3).
+/// A speaker stream carried in report 0x36 by the controller's haptics pump
+/// (ABI 0.3), on the controller's own connection.
 final class SpeakerBox: Sendable {
     let owner: ControllerBox
-    let pump: SpeakerPump
+    let queue: SpeakerQueue
+    let framing: SpeakerAudioFraming
     private struct Converter {
         var rate: Double
         var left: StreamingResampler
         var right: StreamingResampler
     }
-    /// Per-channel resamplers to 48 kHz, rebuilt when the input rate changes.
+    /// Per-channel resamplers to the queue's 45 kHz, rebuilt when the input rate changes.
     private let converter = Mutex<Converter?>(nil)
 
-    init(owner: ControllerBox, pump: SpeakerPump) {
+    init(owner: ControllerBox, queue: SpeakerQueue, framing: SpeakerAudioFraming) {
         self.owner = owner
-        self.pump = pump
+        self.queue = queue
+        self.framing = framing
     }
 
-    /// Queues interleaved PCM at `rate`; returns 48 kHz frames queued.
+    /// Queues interleaved PCM at `rate`; returns 45 kHz frames queued.
     func write(_ samples: UnsafeBufferPointer<Float>, channels: Int, rate: Double) -> Int {
-        let target = pump.format.sampleRate
+        let target = SpeakerQueue.inputSampleRate
         if abs(rate - target) < 0.5 {
             converter.withLock { $0 = nil }
-            return pump.write(interleaved: samples, channels: channels)
+            return queue.write(interleaved: samples, channels: channels)
         }
         return converter.withLock { conv -> Int in
             if conv == nil || conv!.rate != rate {
@@ -399,30 +402,36 @@ final class SpeakerBox: Sendable {
             let n = min(outL.count, outR.count)
             var stereo = [Float](repeating: 0, count: n * 2)
             for i in 0..<n { stereo[2 * i] = outL[i]; stereo[2 * i + 1] = outR[i] }
-            return stereo.withUnsafeBufferPointer { pump.write(interleaved: $0, channels: 2) }
+            return stereo.withUnsafeBufferPointer { queue.write(interleaved: $0, channels: 2) }
         }
     }
 
-    /// Builds a pump whose reports go out on whatever connection the
-    /// controller has at send time, so the stream survives reconnects.
-    static func open(_ owner: ControllerBox, options: SpeakerPumpOptions) -> Result<SpeakerBox, TransportError> {
+    /// Creates the queue and attaches it to the controller's haptics pump,
+    /// starting haptics if needed (blocking briefly).
+    static func open(_ owner: ControllerBox, options: SpeakerQueueOptions) -> Result<SpeakerBox, TransportError> {
         let c = owner.controller
         guard c.transport == .bluetooth else {
             return .failure(.notSupported("USB speaker audio goes through the controller's USB audio device"))
         }
-        guard let framing = c.speakerFraming(), framing.maxPacketBytes > 0 else {
+        guard let framing = c.speakerFraming(), framing.maxPacketBytes >= SpeakerAudioFraming.opusFrameBytes else {
             return .failure(.notSupported("the report descriptor declares no usable output report 0x36"))
         }
-        let send: SpeakerPump.Send = { [weak c, weak owner] report in
-            guard let owner, !owner.isInvalidated, let connection = c?.connection else {
-                throw TransportError.deviceUnavailable
-            }
-            try await connection.sendExperimentalOutputReport(report)
-        }
-        do {
-            return .success(SpeakerBox(owner: owner, pump: try SpeakerPump(framing: framing, options: options, send: send)))
-        } catch {
+        let queue: SpeakerQueue
+        do { queue = try SpeakerQueue(options: options) } catch {
             return .failure(.notSupported("Opus encoder unavailable: \(error)"))
         }
+        let attached = blocking { () -> TransportError? in
+            do throws(TransportError) { try await c.attachSpeaker(queue, framing: framing); return nil } catch { return error }
+        }
+        if let attached { queue.close(); return .failure(attached) }
+        return .success(SpeakerBox(owner: owner, queue: queue, framing: framing))
+    }
+
+    /// Detaches from the pump (if this stream is still the attached one) and closes.
+    func close() {
+        queue.close()
+        let c = owner.controller
+        let q = queue
+        blocking { await c.detachSpeaker(ifAttached: q) }
     }
 }

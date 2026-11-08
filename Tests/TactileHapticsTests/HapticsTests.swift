@@ -388,7 +388,7 @@ final class CountingSink: HapticsReportSink, @unchecked Sendable {
         // oversleep); allow a few reports of scheduling slack either way.
         let expected = elapsedMs / 10.6667
         #expect(Double(reports.count) >= expected * 0.7 && Double(reports.count) <= expected + 3)
-        #expect(reports.allSatisfy { $0.count == 141 && CRC32.verify($0, prefix: .output) })
+        #expect(reports.allSatisfy { $0.count == 142 && CRC32.verify($0, prefix: .output) })
         let m = pump.metrics()
         #expect(abs(m.tickIntervalMeanUs - 10_666.7) < 1_500)
         // stop() advances the pump generation; a report already handed to the

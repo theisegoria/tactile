@@ -31,9 +31,41 @@ extension Controller {
         return f
     }
 
+    /// Haptics framing with the 0x32 length from this controller's descriptor
+    /// when it declares one; the documented defaults otherwise.
+    public func hapticsFraming() -> HapticsFraming {
+        var f = HapticsFraming.documented
+        if let r = reportDescriptor?.report(.output, id: HapticsFormat.reportID) { f.reportLength = r.byteLength }
+        return f
+    }
+
+    /// Attaches a speaker stream to the haptics pump (Bluetooth): while
+    /// `source` has audio, each 10.667 ms tick sends report 0x36 with the
+    /// haptics and one audio frame. Starts haptics if they are not running.
+    /// Pass nil to detach. The attachment survives reconnects.
+    public func attachSpeaker(_ source: (any SpeakerPacketSource)?, framing: SpeakerAudioFraming? = nil) async throws(TransportError) {
+        guard let source else {
+            setSpeakerSource(nil, framing: nil)
+            return
+        }
+        guard transport == .bluetooth else {
+            throw .notSupported("USB speaker audio goes through the controller's USB audio device")
+        }
+        guard let f = framing ?? speakerFraming(), f.layout == .subPackets, f.maxPacketBytes > 0 else {
+            throw .notSupported("the report descriptor declares no usable output report 0x36")
+        }
+        setSpeakerSource(source, framing: f)
+        if !hapticsRunning { try await startHaptics(framing: hapticsFraming()) }
+    }
+
+    /// Detaches `source` if it is still the attached speaker stream.
+    public func detachSpeaker(ifAttached source: any SpeakerPacketSource) async {
+        clearSpeakerSource(ifIdenticalTo: source)
+    }
+
     /// Streams an audio file to the controller as Opus in report 0x36 (Bluetooth).
     /// Route it first with `setAudio(AudioSettings(speakerVolume:outputPath:))`.
-    public func playSpeakerAudio(url: URL, framing: SpeakerAudioFraming? = nil, bitRate: Int = 96_000,
+    public func playSpeakerAudio(url: URL, framing: SpeakerAudioFraming? = nil, bitRate: Int = SpeakerAudioFraming.opusBitRate,
                                  gain: Float = 1) async throws -> SpeakerStreamStats {
         guard let c = connection else { throw TransportError.deviceUnavailable }
         guard let f = framing ?? speakerFraming() else {

@@ -1,6 +1,8 @@
 // EXPERIMENTAL (gate 6): stream an audio file to the controller's speaker or
-// headphone jack as Opus in report 0x36 (🔬 lead), paced at one 10 ms packet
-// per report.
+// headphone jack as Opus in report 0x36 (🔬). With the sub-packet layout it
+// follows the public implementations: 45 kHz audio in CBR 200-byte frames,
+// one report per 10.667 ms, haptics silent. The length-prefixed research
+// layout keeps the old 48 kHz / 10 ms pacing.
 
 import AVFAudio
 public import Foundation
@@ -31,10 +33,11 @@ public final class SpeakerStream: Sendable {
 
     /// - Parameters:
     ///   - framing: report layout; take `reportLength` from the controller's descriptor.
-    ///   - bitRate: pick one whose packets fit `framing.maxPacketBytes`
-    ///     (96 kb/s ≈ 120 B per 10 ms packet).
+    ///   - bitRate: CBR for the sub-packet layout (160 kb/s = 200-byte frames);
+    ///     VBR for the length-prefixed layout (96 kb/s ≈ 120 B per packet).
     ///   - send: delivers one finished report (e.g. `DeviceConnection.sendExperimentalOutputReport`).
-    public init(framing: SpeakerAudioFraming, format: OpusStreamFormat = .speaker, bitRate: Int = 96_000, send: @escaping Send) {
+    public init(framing: SpeakerAudioFraming, format: OpusStreamFormat = .speaker,
+                bitRate: Int = SpeakerAudioFraming.opusBitRate, send: @escaping Send) {
         self.framing = framing
         self.format = format
         self.bitRate = bitRate
@@ -44,18 +47,22 @@ public final class SpeakerStream: Sendable {
     /// Plays `url` in real time. Returns when done or when the task is cancelled.
     public func play(url: URL, gain: Float = 1) async throws -> SpeakerStreamStats {
         try format.validate()
-        let source = try PCMFileSource(url: url, sampleRate: format.sampleRate, channels: format.channels)
+        let rate = framing.layout == .subPackets ? SpeakerAudioFraming.inputSampleRate : format.sampleRate
+        let source = try PCMFileSource(url: url, sampleRate: rate, channels: format.channels)
         return try await play(chunks: source.chunks(frames: format.framesPerPacket, gain: gain))
     }
 
     /// Plays pre-chunked interleaved PCM (each chunk one packet's worth).
     public func play<S: Sequence>(chunks: S) async throws -> SpeakerStreamStats where S.Element == [Float] {
         guard framing.isValid else { throw SpeakerAudioReportBuilder.BuildError.badFraming("invalid speaker framing") }
-        let encoder = try OpusEncoder(format: format, bitRate: bitRate)
+        let subPackets = framing.layout == .subPackets
+        let encoder = try OpusEncoder(format: format, bitRate: bitRate, constantBitRate: subPackets)
         var builder = SpeakerAudioReportBuilder(framing: framing)
         var stats = SpeakerStreamStats()
         let clock = ContinuousClock()
-        let period = Duration.microseconds(Int64(format.frameMilliseconds * 1000))
+        let period = subPackets
+            ? Duration.nanoseconds(Int64(SpeakerAudioFraming.packetPeriodSeconds * 1e9))
+            : Duration.microseconds(Int64(format.frameMilliseconds * 1000))
         let start = clock.now
         var k = 0
         func deliver(_ packets: [[UInt8]]) async throws {

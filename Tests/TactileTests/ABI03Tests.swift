@@ -170,26 +170,57 @@ final class SentReports: Sendable {
         await controller.close()
     }
 
-    @Test func speakerWritePCMResamplesAnyRate() async throws {
+    @Test func speakerWritePCMResamplesAnyRateTo45kHz() async throws {
         let (controller, box) = liveBox()
-        let pump = try SpeakerPump(framing: SpeakerAudioFraming(reportLength: 400)) { _ in }
-        let speaker = SpeakerBox(owner: box, pump: pump)
+        let speaker = SpeakerBox(owner: box, queue: try SpeakerQueue(), framing: SpeakerAudioFraming())
         let handle = OpaquePointer(Unmanaged.passRetained(speaker).toOpaque())
         let mono44 = [Float](repeating: 0.1, count: 4410)            // 100 ms at 44.1 kHz
         let queued = mono44.withUnsafeBufferPointer {
             TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 4410, 1, 44_100)
         }
-        // 100 ms at 48 kHz, less the resampler's look-ahead (12 taps at the input rate).
-        #expect(queued > 4700 && queued <= 4800)
-        let stereo48 = [Float](repeating: 0, count: 960)
-        let direct = stereo48.withUnsafeBufferPointer {
-            TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 480, 2, 48_000)
+        // 100 ms at 45 kHz, less the resampler's look-ahead (12 taps at the input rate).
+        #expect(queued > 4400 && queued <= 4500)
+        let stereo45 = [Float](repeating: 0, count: 960)
+        let direct = stereo45.withUnsafeBufferPointer {
+            TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 480, 2, 45_000)
         }
         #expect(direct == 480)
-        #expect(stereo48.withUnsafeBufferPointer {
+        #expect(stereo45.withUnsafeBufferPointer {
             TactileCABI.tactile_speaker_write_pcm(handle, $0.baseAddress, 480, 2, 0)
         } == TACTILE_ERR_INVALID_ARGUMENT.rawValue)
+        var st = tactile_speaker_stats()
+        st.struct_size = UInt32(MemoryLayout<tactile_speaker_stats>.size)
+        #expect(TactileCABI.tactile_speaker_get_stats(handle, &st) == TACTILE_OK.rawValue)
+        #expect(st.streaming == 1 && st.max_packet_bytes == 255)
+        #expect(st.queued_ms > 100 && st.estimated_latency_ms > st.queued_ms)
+        #expect(TactileCABI.tactile_speaker_set_destination(handle, 1) == TACTILE_OK.rawValue)
+        #expect(TactileCABI.tactile_speaker_set_destination(handle, 5) == TACTILE_ERR_INVALID_ARGUMENT.rawValue)
         TactileCABI.tactile_speaker_close(handle)
+        _ = box.invalidate()
+        await controller.close()
+    }
+
+    /// The speaker rides on the haptics pump: with audio queued, the pump's
+    /// reports become 0x36 carrying the haptics and one CBR frame each.
+    @Test func attachedSpeakerTurnsPumpReportsInto0x36() async throws {
+        let reports = SentReports()
+        let (controller, box) = liveBox(reports)
+        let queue = try SpeakerQueue()
+        try await controller.attachSpeaker(queue, framing: SpeakerAudioFraming())
+        #expect(controller.hapticsRunning)
+        let tone = (0..<(480 * 6)).flatMap { i -> [Float] in let v = Float(sin(Double(i) * 0.06)) * 0.3; return [v, v] }
+        #expect(tone.withUnsafeBufferPointer { queue.write(interleaved: $0, channels: 2) } == 480 * 6)
+        controller.haptics.play(.click(intensity: 1), side: .both)
+        #expect(await eventually { reports.list.withLock { $0.filter { $0.first == 0x36 }.count >= 3 } })
+        let speakerReports = reports.list.withLock { $0.filter { $0.first == 0x36 } }
+        for r in speakerReports {
+            #expect(r.count == 398 && CRC32.verify(r, prefix: .output))
+            #expect(r[77] == 0x93 && r[78] == 200 && r[79] == 0xF4)
+        }
+        // The click's haptics travel in the 0x92 sub-packet of the 0x36 reports.
+        #expect(speakerReports.contains { r in r[13..<77].contains { $0 != 0 } })
+        #expect(controller.speakerReportCount >= 3)
+        await controller.detachSpeaker(ifAttached: queue)
         _ = box.invalidate()
         await controller.close()
     }

@@ -11,7 +11,7 @@ struct AudioView: View {
     @State private var micVolume = 32.0
     @State private var file: URL?
     @State private var gain = 1.0
-    @State private var bitrate = 64000
+    @State private var bitrate = 160000
     @State private var reportLength = 398
     @State private var payloadOffset = 2
     @State private var prefix = SpeakerAudioFraming.LengthPrefix.u8
@@ -123,8 +123,10 @@ struct AudioView: View {
             guard (0...15).contains(tag), (6000...512000).contains(bitrate) else { throw LabError.invalid("Tag must be 0–15 and bitrate 6000–512000.") }
             var framing = SpeakerAudioFraming(reportLength: reportLength)
             framing.payloadOffset = payloadOffset; framing.tag = UInt8(tag); framing.lengthPrefix = prefix; framing.sequenceInHighNibble = highSequence
+            // Sub-packet layout (default): payload offset and prefix apply only to the research layout.
+            framing.destination = path == .headphones ? .headphones : .speaker
             guard framing.isValid, framing.maxPacketBytes > 0 else { throw LabError.invalid("Invalid speaker header, payload, length prefix or CRC layout.") }
-            session.perform(.speaker(file, framing, bitrate, Float(gain), routing), name: "Experimental speaker", settings: "\(routingDescription); file=\(file.lastPathComponent); bytes=\(reportLength); offset=\(payloadOffset); prefix=\(prefix.rawValue); tag=\(tag); highSequence=\(highSequence); bitrate=\(bitrate); gain=\(gain)")
+            session.perform(.speaker(file, framing, bitrate, Float(gain), routing), name: "Experimental speaker", settings: "\(routingDescription); layout=\(framing.layout.rawValue); file=\(file.lastPathComponent); bytes=\(reportLength); offset=\(payloadOffset); prefix=\(prefix.rawValue); tag=\(tag); highSequence=\(highSequence); bitrate=\(bitrate); gain=\(gain)")
         } catch { session.showError(error) }
     }
     private func record() {

@@ -34,6 +34,7 @@ STATIC_ASSERT(sizeof(tactile_haptics_metrics) == 104, "metrics size");
 STATIC_ASSERT(offsetof(tactile_audio_settings, struct_size) == 0, "struct_size first");
 STATIC_ASSERT(sizeof(tactile_audio_settings) == 20, "audio settings size");
 STATIC_ASSERT(offsetof(tactile_speaker_options, struct_size) == 0, "struct_size first");
+STATIC_ASSERT(sizeof(tactile_speaker_options) == 20, "speaker options size");
 STATIC_ASSERT(offsetof(tactile_speaker_stats, struct_size) == 0, "struct_size first");
 STATIC_ASSERT(sizeof(tactile_speaker_stats) == 88, "speaker stats size");
 
@@ -111,6 +112,7 @@ int main(void) {
         CHECK(tactile_speaker_write_pcm(NULL, pcm, 1, 2, 48000.0) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_write_opus(NULL, pkt, 1) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_flush(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_speaker_set_destination(NULL, TACTILE_SPEAKER_DESTINATION_HEADPHONES) == TACTILE_ERR_INVALID_ARGUMENT);
         CHECK(tactile_speaker_get_stats(NULL, &st) == TACTILE_ERR_INVALID_ARGUMENT);
         tactile_speaker_close(NULL);
     }

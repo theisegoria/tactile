@@ -71,9 +71,18 @@ import Testing
     }
 }
 
+extension SpeakerAudioFraming {
+    /// The pre-0.3 research layout (sequence byte, length prefix, Opus).
+    static func legacy(_ length: Int) -> SpeakerAudioFraming {
+        var f = SpeakerAudioFraming(reportLength: length)
+        f.layout = .lengthPrefixed
+        return f
+    }
+}
+
 @Suite struct SpeakerAudioReportTests {
     @Test func framesPacketWithLengthAndCRC() throws {
-        var b = SpeakerAudioReportBuilder(framing: SpeakerAudioFraming(reportLength: 32))
+        var b = SpeakerAudioReportBuilder(framing: .legacy(32))
         let r = try b.build(opusPacket: [0xF4, 0xAA, 0xBB])
         #expect(r.count == 32)
         #expect(Array(r[0...5]) == [0x36, 0x00, 0x03, 0xF4, 0xAA, 0xBB])
@@ -84,7 +93,7 @@ import Testing
     }
 
     @Test func variants() throws {
-        var f = SpeakerAudioFraming(reportLength: 16)
+        var f = SpeakerAudioFraming.legacy(16)
         f.lengthPrefix = .u16LittleEndian
         f.crc = false
         f.sequenceInHighNibble = false
@@ -96,11 +105,11 @@ import Testing
     }
 
     @Test func rejectsOversizeAndBadFraming() {
-        var b = SpeakerAudioReportBuilder(framing: SpeakerAudioFraming(reportLength: 10))
+        var b = SpeakerAudioReportBuilder(framing: .legacy(10))
         #expect(throws: SpeakerAudioReportBuilder.BuildError.packetTooLarge(size: 4, max: 3)) {
             try b.build(opusPacket: [1, 2, 3, 4])
         }
-        var tiny = SpeakerAudioReportBuilder(framing: SpeakerAudioFraming(reportLength: 3))
+        var tiny = SpeakerAudioReportBuilder(framing: .legacy(3))
         #expect(throws: SpeakerAudioReportBuilder.BuildError.self) { try tiny.build(opusPacket: []) }
     }
 }

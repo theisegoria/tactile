@@ -57,23 +57,32 @@ print("cal", len(cal), hx(cal))
 f=[0x09]+[0x55,0x44,0x33,0x22,0x11,0x02]+[0]*13+[0]*4; print("pair_bt", hx(seal(f,0xa3)))
 fw=[0x20]+list(b"Jun 12 2024")+list(b"10:20:30")+[0]*4+list(struct.pack('<II',0x00000414,0x0110002a))+[0]*12+list(struct.pack('<H',0x0224))+[0]*18
 print("fw", len(fw), hx(fw))
-# haptics 0x32 seq 0 counter 0, samples k-32 for k in 0..63
-h=[0]*141; h[0]=0x32; h[1]=0x00; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,0]; h[11:13]=[0x92,64]
-h[13:77]=[ (k-32)&0xff for k in range(64)]; print("hap", hx(seal(h,0xa2)))
+# haptics 0x32 seq 0 counter 0, samples k-32 for k in 0..63. 142 bytes incl.
+# report ID (dualsense-bridge, MIT: CRC at 138); control 0xFE + 5x 0x10 + counter.
+CTL=[0xfe,0x10,0x10,0x10,0x10,0x10]
+def hap(seq,counter,samples):
+    h=[0]*142; h[0]=0x32; h[1]=(seq&15)<<4; h[2:4]=[0x91,7]; h[4:11]=CTL+[counter&0xff]; h[11:13]=[0x92,64]
+    h[13:77]=[x&0xff for x in samples]; return seal(h,0xa2)
+print("hap", hx(hap(0,0,[k-32 for k in range(64)])))
 
 # --- Tactile 0.3 vectors -------------------------------------------------
-# 0x32 after 15 reports: seq nibble 0xF (high nibble), control counter 15,
-# samples all 0x7f (signed +127) -> and the 16th report wraps seq to 0.
-h=[0]*141; h[0]=0x32; h[1]=0xF0; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,15]; h[11:13]=[0x92,64]
-h[13:77]=[0x7f]*64; print("hap_seq15", hx(seal(h,0xa2)))
-h=[0]*141; h[0]=0x32; h[1]=0x00; h[2:4]=[0x91,7]; h[4:11]=[0xfe,0,0,0,0,0xff,16]; h[11:13]=[0x92,64]
-print("hap_seq16_silent", hx(seal(h,0xa2)))
-# 0x36 speaker, test length 72 (the real length comes from the descriptor):
-# seq 0, u8 length prefix, Opus TOC 0xF4 packet f4 01 02 03 04, CRC A2.
-s=[0]*72; s[0]=0x36; s[1]=0x00; s[2]=5; s[3:8]=[0xf4,1,2,3,4]; print("spk_seq0", hx(seal(s,0xa2)))
-s=[0]*72; s[0]=0x36; s[1]=0x10; s[2]=3; s[3:6]=[0xf4,0xaa,0x55]; print("spk_seq1", hx(seal(s,0xa2)))
-# USB variant (no CRC), test length 16.
-u=[0]*16; u[0]=0x36; u[1]=0x00; u[2]=2; u[3:5]=[0xf4,9]; print("spk_usb", hx(u))
+print("hap_seq15", hx(hap(15,15,[0x7f]*64)))
+print("hap_seq16_silent", hx(hap(16,16,[0]*64)))
+# 0x36 speaker, 398 bytes (daidr / dualsense-bridge, MIT): [1] seq<<4;
+# [2] 0x91,7: FE + 5x 0x30 + counter; [11] 0x92,64 haptics; [77] 0x93 (speaker)
+# or 0x96 (headphones), length, Opus; zero pad; CRC A2 at 394.
+def spk(seq,counter,haptics,dest,opus,length=398,crc=True):
+    r=[0]*length; r[0]=0x36; r[1]=(seq&15)<<4
+    r[2:4]=[0x91,7]; r[4:11]=[0xfe,0x30,0x30,0x30,0x30,0x30,counter&0xff]
+    r[11:13]=[0x92,64]; r[13:77]=[x&0xff for x in haptics]+[0]*(64-len(haptics))
+    r[77]=dest; r[78]=len(opus); r[79:79+len(opus)]=opus
+    return seal(r,0xa2) if crc else r
+opus200=[0xf4]+[(i*7)&0xff for i in range(1,200)]
+print("spk_seq0", hx(spk(0,0,[k-32 for k in range(64)],0x93,opus200)))
+print("spk_seq1_hp", hx(spk(1,1,[],0x96,[0xf4,0xaa,0x55])))
+print("spk_usb", hx(spk(0,0,[],0x93,[0xf4,9],length=100,crc=False)))
+# Legacy research layout (pre-0.3 guess), length 72: seq, u8 length, Opus.
+s=[0]*72; s[0]=0x36; s[1]=0x00; s[2]=5; s[3:8]=[0xf4,1,2,3,4]; print("spk_legacy", hx(seal(s,0xa2)))
 # Audio settings: speaker volume 200, path speaker (3<<4), BT seq 0 -> flags0 0x20|0x80.
 r=[0]*78; r[0]=0x31; r[1]=0; r[2]=0x10; r[3+0]=0x20|0x80; r[3+5]=200; r[3+7]=0x30
 print("bt_audio", hx(seal(r,0xa2)))

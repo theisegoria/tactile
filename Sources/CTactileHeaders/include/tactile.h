@@ -208,7 +208,8 @@ typedef struct tactile_haptics_metrics {
 
 /* ABI 0.3: audio volume and routing. -1 leaves a field unchanged (its valid
  * flag stays clear). Volumes: headphone 0-127, speaker 0-255, mic 0-64
- * (clamped). Research-grade ranges, unverified on hardware. */
+ * (clamped). Most public implementations treat speaker 0x64 (100) as the
+ * maximum; one reports only 0x3D-0x64 working. Unverified on hardware. */
 typedef struct tactile_audio_settings {
     uint32_t struct_size;
     int32_t headphone_volume;
@@ -219,28 +220,35 @@ typedef struct tactile_audio_settings {
 
 typedef struct tactile_speaker tactile_speaker; /* opaque (ABI 0.3) */
 
+/* Where report 0x36 plays the audio (audio sub-packet 0x93 / 0x96). */
+typedef enum tactile_speaker_destination {
+    TACTILE_SPEAKER_DESTINATION_SPEAKER = 0,
+    TACTILE_SPEAKER_DESTINATION_HEADPHONES = 1
+} tactile_speaker_destination;
+
 typedef struct tactile_speaker_options {
     uint32_t struct_size;
-    int32_t bit_rate;                         /* Opus bits/s; 0 = 96000 */
+    int32_t bit_rate;                         /* CBR Opus bits/s; 0 = 160000 (200-byte frames) */
     int32_t queue_ms;                         /* most audio queued; 0 = 250 */
     int32_t idle_ms;                          /* silence before the stream ends; 0 = 500 */
+    int32_t destination;                      /* tactile_speaker_destination; default speaker */
 } tactile_speaker_options;
 
 typedef struct tactile_speaker_stats {
     uint32_t struct_size;
     uint32_t streaming;                       /* 1 while 0x36 reports are going out */
-    uint64_t packets_sent;
+    uint64_t packets_sent;                    /* frames handed to the haptics pump (one 0x36 each) */
     uint64_t silence_packets;                 /* underrun padding */
     uint64_t frames_dropped;                  /* refused because the queue was full */
     uint64_t packets_dropped_oversize;
-    uint64_t send_failures;
-    uint32_t queued_frames;                   /* 48 kHz frames waiting */
+    uint64_t send_failures;                   /* haptics-pump reports dropped (stalled link) + encode failures */
+    uint32_t queued_frames;                   /* 45 kHz frames waiting */
     uint32_t max_packet_bytes;                /* largest Opus packet the report fits */
     uint32_t largest_packet;
     uint32_t reserved0;
     double queued_ms;
     double send_latency_mean_us;              /* deadline to set-report completion */
-    double estimated_latency_ms;              /* queued + one 10 ms packet + mean send latency; air link excluded */
+    double estimated_latency_ms;              /* queued + one 10.667 ms report + mean send latency; air link excluded */
 } tactile_speaker_stats;
 
 typedef void (*tactile_event_callback)(void *user_data, tactile_controller *controller, int32_t event);
@@ -371,9 +379,15 @@ int32_t tactile_haptics_get_metrics(tactile_controller *controller, tactile_hapt
 /* ---- Audio and speaker (ABI 0.3; research-grade, unverified) -----------
  * Routing and volume go in output report 0x31 (Bluetooth) or 0x02 (USB), so
  * tactile_controller_set_audio works on both transports. Speaker audio:
- *   - Bluetooth: tactile_speaker_* encodes PCM (any rate, resampled to 48 kHz) as Opus (CELT, 10 ms
- *     packets) into output report 0x36, sized from the pad's report
- *     descriptor, on the controller's own connection (no second connection).
+ *   - Bluetooth: report 0x36 carries the haptics and one Opus frame every
+ *     10.667 ms, so the speaker rides on the haptics pump: while audio is
+ *     queued the pump sends 0x36 (this tick's haptics + one frame) instead
+ *     of 0x32. tactile_speaker_open starts haptics if needed, and
+ *     tactile_haptics_stop also stops the speaker until haptics restart.
+ *     PCM at any rate is resampled to 45 kHz (480 samples per report) and
+ *     encoded as CBR 160 kb/s stereo CELT, 200-byte frames. Layout from
+ *     public implementations (PROTOCOL.md); report length from the pad's
+ *     descriptor; on the controller's own connection.
  *   - USB: play through the pad's USB audio device (TACTILE_USB_AUDIO_*);
  *     tactile_speaker_open returns TACTILE_ERR_UNSUPPORTED.
  * The headset state is tactile_input_state.headphones / .microphone. */
@@ -389,16 +403,19 @@ int32_t tactile_controller_set_audio(tactile_controller *controller, const tacti
 int32_t tactile_speaker_open(tactile_controller *controller, const tactile_speaker_options *options, tactile_speaker **out_speaker);
 /* Stops the stream, drops queued audio and frees the handle. Blocks briefly. */
 void tactile_speaker_close(tactile_speaker *speaker);
-/* Queues float PCM at any sample_rate (1-768000 Hz; resampled to 48 kHz when
- * it differs). 1 channel is duplicated; beyond 2 are dropped. Non-blocking,
- * single producer. Returns the number of 48 kHz frames queued (fewer when the
- * queue is full) or a negative tactile_result. Underruns play silence; after
+/* Queues float PCM at any sample_rate (1-768000 Hz; resampled to 45 kHz).
+ * 1 channel is duplicated; beyond 2 are dropped. Non-blocking, single
+ * producer. Returns the number of 45 kHz frames queued (fewer when the queue
+ * is full) or a negative tactile_result. Underruns play silence; after
  * idle_ms of silence the stream ends and the next write restarts it. */
 int32_t tactile_speaker_write_pcm(tactile_speaker *speaker, const float *interleaved, int32_t frames, int32_t channels, double sample_rate);
-/* Queues one pre-encoded Opus packet (CELT, 48 kHz stereo, 10 ms). Returns
+/* Queues one pre-encoded Opus frame (48 kHz stereo, 10 ms, CBR 200 bytes
+ * recommended; it plays over one 10.667 ms report). Returns
  * TACTILE_OK, TACTILE_ERR_BUSY when the queue is full, or
  * TACTILE_ERR_INVALID_ARGUMENT when it does not fit the report. */
 int32_t tactile_speaker_write_opus(tactile_speaker *speaker, const uint8_t *packet, int32_t size);
+/* Switches between speaker and headphone jack for later frames. Non-blocking. */
+int32_t tactile_speaker_set_destination(tactile_speaker *speaker, int32_t destination);
 /* Drops queued audio. Non-blocking. */
 int32_t tactile_speaker_flush(tactile_speaker *speaker);
 int32_t tactile_speaker_get_stats(tactile_speaker *speaker, tactile_speaker_stats *out_stats);

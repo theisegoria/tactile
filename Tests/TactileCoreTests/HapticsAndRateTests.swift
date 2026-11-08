@@ -3,14 +3,15 @@ import Testing
 
 @Suite struct HapticsReportTests {
     // Source: tools/gen_vectors.py from the documented 0x32 facts (UNVERIFIED on
-    // hardware): 141 bytes, sub-packet 0x11 (7 bytes, trailing counter), then 0x12
-    // with 64 signed samples, CRC seed 0xA2. Samples are k-32 for k in 0..<64.
-    let golden = hex("32 00 91 07 fe 00 00 00 00 ff 00 92 40 e0 e1 e2 e3 e4 e5 e6 e7 e8 e9 ea eb ec ed ee ef f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 fa fb fc fd fe ff 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4c a1 e6 04")
+    // hardware): 142 bytes, sub-packet 0x11 (FE + five 0x10 buffer bytes +
+    // counter), then 0x12 with 64 signed samples, CRC seed 0xA2. Samples are
+    // k-32 for k in 0..<64.
+    let golden = hex("32 00 91 07 fe 10 10 10 10 10 00 92 40 e0 e1 e2 e3 e4 e5 e6 e7 e8 e9 ea eb ec ed ee ef f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 fa fb fc fd fe ff 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 8a 0c e3 fa")
 
     @Test func documentedFraming() {
         var b = HapticsReportBuilder()
         let r = b.build(samples: (0..<64).map { Int8($0 - 32) })
-        #expect(r.count == 141)
+        #expect(r.count == 142)
         #expect(r == golden)
         #expect(CRC32.verify(r, prefix: .output))
     }

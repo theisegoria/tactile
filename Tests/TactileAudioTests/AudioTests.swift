@@ -76,9 +76,9 @@ func rms(_ x: ArraySlice<Float>) -> Float { (x.reduce(0) { $0 + $1 * $1 } / Floa
 @Suite struct SpeakerStreamTests {
     @Test func pacesValidReports() async throws {
         let sent = Mutex<[[UInt8]]>([])
-        let framing = SpeakerAudioFraming(reportLength: 200)
-        let stream = SpeakerStream(framing: framing, bitRate: 64_000) { r in sent.withLock { $0.append(r) } }
-        let chunks = (0..<20).map { tone(frames: 480, channels: 2, rate: 48000, offset: $0 * 480) }
+        let framing = SpeakerAudioFraming()      // 398-byte sub-packet layout
+        let stream = SpeakerStream(framing: framing) { r in sent.withLock { $0.append(r) } }
+        let chunks = (0..<20).map { tone(frames: 480, channels: 2, rate: 45000, offset: $0 * 480) }
         let clock = ContinuousClock()
         let t0 = clock.now
         let stats = try await stream.play(chunks: chunks)
@@ -86,16 +86,16 @@ func rms(_ x: ArraySlice<Float>) -> Float { (x.reduce(0) { $0 + $1 * $1 } / Floa
         let reports = sent.withLock { $0 }
         #expect(stats.packetsSent == reports.count && reports.count >= 20)
         #expect(stats.packetsDroppedOversize == 0 && stats.sendFailures == 0)
-        #expect(reports.allSatisfy { $0.count == 200 && $0[0] == 0x36 && CRC32.verify($0, prefix: .output) })
-        // Packet length prefix and TOC in place.
-        #expect(reports.allSatisfy { Int($0[2]) > 0 && OpusTOC($0[3]).config == 30 })
-        // Real-time pacing: ≈10 ms per packet.
-        #expect(elapsed >= .milliseconds(180))
+        #expect(reports.allSatisfy { $0.count == 398 && $0[0] == 0x36 && CRC32.verify($0, prefix: .output) })
+        // Audio sub-packet: speaker header, a CBR 200-byte CELT frame (TOC config 30).
+        #expect(reports.allSatisfy { $0[77] == 0x93 && $0[78] == 200 && OpusTOC($0[79]).config == 30 })
+        // Real-time pacing: one report per 10.667 ms.
+        #expect(elapsed >= .milliseconds(200))
     }
 
     @Test func oversizePacketsAreDroppedNotTruncated() async throws {
         let sent = Mutex(0)
-        let stream = SpeakerStream(framing: SpeakerAudioFraming(reportLength: 20), bitRate: 256_000) { _ in sent.withLock { $0 += 1 } }
+        let stream = SpeakerStream(framing: SpeakerAudioFraming(reportLength: 200)) { _ in sent.withLock { $0 += 1 } }
         let stats = try await stream.play(chunks: (0..<5).map { tone(frames: 480, channels: 2, rate: 48000, offset: $0 * 480) })
         #expect(stats.packetsDroppedOversize > 0)
         #expect(sent.withLock { $0 } == stats.packetsSent)
