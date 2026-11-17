@@ -6,6 +6,49 @@ Before 1.0.0, minor versions may break the Swift API; the C ABI major
 
 ## [Unreleased]
 
+Targets 0.4.0 (`TactileVersion` is 0.4.0). Nothing below has been checked on a
+controller yet: the feel of trigger presets, live pattern playback, profiles and
+system-audio haptics are UNVERIFIED on hardware; the tests are hardware-free.
+
+### Added — Swift
+- Trigger effects: `TriggerEffectSpec` (the factory call behind an effect, Codable
+  with a `type` field, decodable from wire bytes), `TriggerCurve` / `.curve`
+  (resistance, vibration amplitude and frequency over trigger travel 0…1, with
+  time-resolved envelopes for machine and galloping) and `TriggerPreset` (off,
+  weapon trigger, bow draw, brake pedal, click/detent, machine gun, gallop).
+  `TriggerSide` moved to TactileCore (still re-exported by `Tactile`) and is Codable.
+- Haptic patterns: `HapticPattern` (`.tactilepattern` JSON, schema version 1) with
+  tracks of parametric effects, audio clips (path, gain, trim, side), rumble,
+  trigger changes and lightbar keys (step or linear).
+  `HapticPatternRenderer.renderOffline` renders per-actuator PCM at 3 kHz without
+  a device, deterministically (`HapticPreview`: floats, 8-bit samples, waveform
+  peaks). `HapticPatternPlayer` streams that render into the mixer and sends
+  trigger/lightbar changes on a clock; `Controller.startPattern` / `play(_:)`.
+- System audio to haptics: new `TactileSystemAudio` product with
+  `SystemAudioHapticsSource` (ScreenCaptureKit audio-only capture of all system
+  audio except this process, or one app). Needs the Screen Recording permission
+  (`hasPermission`, `requestPermission()`). `HapticFilterChain` /
+  `HapticFilterSettings` (low-pass or band-pass, gain, compressor, gate; presets
+  passthrough, music, game) and `HapticAudioPipeline` in TactileHaptics.
+- Input analysis: `InputRecording` (Codable, record/replay,
+  `Controller.recordInput`) and `InputAnalysis` (stick drift and recommended dead
+  zone, circularity, trigger travel, button timing, report interval statistics,
+  sequence gaps), `IntervalStatistics`.
+- Profiles: `ControllerProfile` (lightbar, player LEDs, triggers, haptic gain,
+  preferred pattern), `Controller.apply(_:)`, `ProfileStore` (JSON files in
+  Application Support, injectable directory).
+- `TactileCodeExport` / `CodeLanguage`: snippets for trigger effects, presets,
+  patterns and profiles in Swift, C, Unity C#, Unreal C++ and Godot GDScript.
+- USB: connection-level golden tests for the existing USB path (0x01 in, 0x02
+  out). Whether USB needs the Bluetooth lightbar-release step is unverified.
+
+### Added — C ABI 0.4 (additive; 0.3 callers keep working)
+- `tactile_trigger_from_preset` with `tactile_trigger_preset` values.
+- `tactile_pattern_load_file/load_json/free/duration/render`,
+  `tactile_pattern_play/stop/is_playing` (non-blocking, one pattern per controller).
+- `tactile_profile_apply_file/json`.
+- Bindings: Python (tested), Unity, Unreal and Godot (not compiled here).
+
 ## [0.3.0] — 2026-11-09 (release candidate)
 
 ### Added — C ABI 0.3 (additive; 0.2 callers keep working)
