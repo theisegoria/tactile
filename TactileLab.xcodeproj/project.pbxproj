@@ -7,28 +7,59 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03006FE2C2488853A76085AB /* LabCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42CE0653C41E3EF71B9F87F6 /* LabCard.swift */; };
+		04ADD3459C63D0CC6B336841 /* InputLabHealthReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3760537C883827C3CF807E08 /* InputLabHealthReport.swift */; };
 		0E7B99967073AE1442F543B1 /* InputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE46081E9B123EF593E97744 /* InputView.swift */; };
+		12760962F051E46FDE086844 /* LabCardParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6039D590346F13651816B4B5 /* LabCardParts.swift */; };
+		14FC6B85250BB16E656A2E68 /* ProfileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53143E7A746078E3F8B3BC5A /* ProfileModels.swift */; };
 		1866FF130EF6314874191DD7 /* TactileLab.icon in Resources */ = {isa = PBXBuildFile; fileRef = FF9882AFBEE07761B289BEF7 /* TactileLab.icon */; };
+		1C009275C1CB567446BE00CE /* InputLabStickCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB522B399DB32CF8F1A0F58 /* InputLabStickCard.swift */; };
+		1F0C9199F13F207DAB4A8427 /* OnboardingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70A462511787F664A784E8C /* OnboardingSheet.swift */; };
+		21A649B5F8DC4B23C46A91AF /* TriggerDesignerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F0D65E8B63F69C801F89396 /* TriggerDesignerView.swift */; };
+		21B9EA7A585712186BD20215 /* TriggerParameterEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E076393BB9A133CE23F81299 /* TriggerParameterEditor.swift */; };
 		22112CA80CB0BE904B470E1E /* EffectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA2849BB92392E532E514F6 /* EffectsView.swift */; };
+		221BE5C8CA5DD3E737E4479B /* InputLabRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFCC89545FAE50885595B3AA /* InputLabRecording.swift */; };
+		33146F43AE427B9847DCE9A0 /* InputLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BE1582A7D7BD6179655A24 /* InputLabView.swift */; };
+		34BF3364E382BAD11F18761C /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD7C3F27795B5512E085727 /* ProfilesView.swift */; };
+		366170F7D104DE7C72F80AA8 /* ComposerCodeExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20C005A582380F684992A85 /* ComposerCodeExport.swift */; };
+		373C74405166548F3E426EDE /* LabMenuBarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CAFE56629937055D90727E /* LabMenuBarContent.swift */; };
 		3A0BC37EF1F8769406D11ED1 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */; };
 		3A0E273650F8EDA48B1BFA87 /* Tactile in Frameworks */ = {isa = PBXBuildFile; productRef = B3FD68FB24F68A9E9CD20B45 /* Tactile */; };
+		3DDDAA8BF86B8E9BDAD36835 /* InputLabStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43374D3776EA906F3BD9D9BC /* InputLabStoreTests.swift */; };
 		408D86799B5F21EB6CC168B8 /* TestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2046C472620EF963F29AE2C /* TestsView.swift */; };
 		42AE9174B69655477E4CE564 /* LabSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2590748E86C9DA795EB077D /* LabSession.swift */; };
+		430AE70CE76EF06753F720D2 /* ControllerOperations+Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE95B5BD5708B406F77324B /* ControllerOperations+Composer.swift */; };
 		46DA9DD0A46AA733742BA7E2 /* SessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */; };
 		5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */; };
 		6D0D648A3CAE0EC1242B8639 /* PlayersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE8293400FC63263EF99AF3 /* PlayersView.swift */; };
+		6EC20CD4E104D362FF06BE40 /* ComposerTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = E699339808F0D3DC98CC058D /* ComposerTimeline.swift */; };
+		6F7C595225CF13374E6B660F /* ComposerDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46AEAF144F300135713355B /* ComposerDocument.swift */; };
 		7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24394A429FC00BE2DD62181 /* TriggerEditor.swift */; };
+		76712FCA297ECEA2A12650AE /* InputLabPollingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C982DF31DD23CC0B6153247 /* InputLabPollingCard.swift */; };
 		77B2041F1FE3AE3893BBD053 /* ControllerDiagram.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */; };
+		792092A37685DDC86EC83BB8 /* SpeakerPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB80DDC56529BCA95FBAB10A /* SpeakerPanels.swift */; };
+		87F3CF5183C6779E9E72BE71 /* LabEmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC733FB33BA5840466775FA6 /* LabEmptyStates.swift */; };
 		926AE7128C758FDAB618C1FD /* LabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D9259E306C4360EE0F4857 /* LabModels.swift */; };
+		98F0BC70B876682EEC9EE013 /* ProfileEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15E9E1CF030BA6BC78234C53 /* ProfileEditorSheet.swift */; };
+		A4219B5915B280F8029D4D89 /* InputLabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FA932B713E46D3E75B27AF /* InputLabStore.swift */; };
 		A43377246A66646A4C4A7937 /* DiagnosticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */; };
 		AC460B34F074D5D281B93C62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33204A160FAEAE5EEB251769 /* Assets.xcassets */; };
+		BA1467407C18F245C2708483 /* ComposerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4180E46AD35515596AD3DCCB /* ComposerRenderer.swift */; };
 		BD389F604DF0754A798A5980 /* GuidedCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F9153FF686BB225228C7B5 /* GuidedCheck.swift */; };
 		BDFDF30BED5461E8A939FDBD /* ControllerOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */; };
+		BE8A94C07A143FF38392C176 /* ProfileLabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F5AFE36FB2B17D83DB4E1F /* ProfileLabStore.swift */; };
 		C1D59EB6CE24DB7FB2D1FC5D /* LabUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F469BEFB9C7243E4226CFBFA /* LabUITests.swift */; };
 		C82099B45CEABD80D7953E65 /* AudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503741E72C65CE510C91BE4F /* AudioView.swift */; };
+		C99C3A8D27B887C00ABE0D16 /* InputLabAnalysisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B8DE1973DE36BBB47BF675 /* InputLabAnalysisTests.swift */; };
 		D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */; };
 		DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A625665CB92DFD2ED26F036 /* LabRootView.swift */; };
+		DBC8CA0F48CAD7BFD25A3830 /* ComposerTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968697B86F83790DE1E62F46 /* ComposerTrigger.swift */; };
+		DCFAD57B575A5A95754E98A6 /* ProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F77061A226B4766445BA11 /* ProfileStoreTests.swift */; };
+		DD4D97DBE1BF9A91C6F3823F /* ComposerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDFB9BE53E3DDACABC832C6 /* ComposerModel.swift */; };
+		E0D9AF5BBB776078A69A5548 /* ComposerInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061BB30C1AE40022E359C3B9 /* ComposerInspector.swift */; };
+		ECC809FDF7B4E2DE4865C086 /* InputLabAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72BF65371EB0F0CEF80F633E /* InputLabAnalysis.swift */; };
 		F4F76B294455D61443F36E81 /* ScreenshotTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416C7BD07CE732AEBF5C014E /* ScreenshotTour.swift */; };
+		FBA349BCE8675247B04DFB40 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35FE125E315B47C5A37FDF0 /* ComposerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,29 +80,60 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		061BB30C1AE40022E359C3B9 /* ComposerInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerInspector.swift; sourceTree = "<group>"; };
 		0D220BD136177BEF0FBED642 /* TactileLabTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0DD7C3F27795B5512E085727 /* ProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesView.swift; sourceTree = "<group>"; };
+		12FA932B713E46D3E75B27AF /* InputLabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabStore.swift; sourceTree = "<group>"; };
+		15E9E1CF030BA6BC78234C53 /* ProfileEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorSheet.swift; sourceTree = "<group>"; };
+		21F77061A226B4766445BA11 /* ProfileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStoreTests.swift; sourceTree = "<group>"; };
 		33204A160FAEAE5EEB251769 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3760537C883827C3CF807E08 /* InputLabHealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabHealthReport.swift; sourceTree = "<group>"; };
 		416C7BD07CE732AEBF5C014E /* ScreenshotTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTour.swift; sourceTree = "<group>"; };
+		4180E46AD35515596AD3DCCB /* ComposerRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRenderer.swift; sourceTree = "<group>"; };
+		42CE0653C41E3EF71B9F87F6 /* LabCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabCard.swift; sourceTree = "<group>"; };
+		43374D3776EA906F3BD9D9BC /* InputLabStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabStoreTests.swift; sourceTree = "<group>"; };
+		4DDFB9BE53E3DDACABC832C6 /* ComposerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModel.swift; sourceTree = "<group>"; };
 		503741E72C65CE510C91BE4F /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioView.swift; sourceTree = "<group>"; };
+		53143E7A746078E3F8B3BC5A /* ProfileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileModels.swift; sourceTree = "<group>"; };
+		5EB522B399DB32CF8F1A0F58 /* InputLabStickCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabStickCard.swift; sourceTree = "<group>"; };
+		6039D590346F13651816B4B5 /* LabCardParts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabCardParts.swift; sourceTree = "<group>"; };
 		69D9259E306C4360EE0F4857 /* LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabModels.swift; sourceTree = "<group>"; };
+		69F5AFE36FB2B17D83DB4E1F /* ProfileLabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileLabStore.swift; sourceTree = "<group>"; };
 		6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMonitor.swift; sourceTree = "<group>"; };
+		72BF65371EB0F0CEF80F633E /* InputLabAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabAnalysis.swift; sourceTree = "<group>"; };
 		77F9153FF686BB225228C7B5 /* GuidedCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidedCheck.swift; sourceTree = "<group>"; };
+		7C982DF31DD23CC0B6153247 /* InputLabPollingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabPollingCard.swift; sourceTree = "<group>"; };
 		87B86AB5CF57CAA2DEE3DB63 /* TactileLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TactileLabApp.swift; sourceTree = "<group>"; };
 		89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerOperations.swift; sourceTree = "<group>"; };
+		8DE95B5BD5708B406F77324B /* ControllerOperations+Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ControllerOperations+Composer.swift"; sourceTree = "<group>"; };
+		8F0D65E8B63F69C801F89396 /* TriggerDesignerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerDesignerView.swift; sourceTree = "<group>"; };
+		968697B86F83790DE1E62F46 /* ComposerTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTrigger.swift; sourceTree = "<group>"; };
+		98CAFE56629937055D90727E /* LabMenuBarContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabMenuBarContent.swift; sourceTree = "<group>"; };
 		9A625665CB92DFD2ED26F036 /* LabRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabRootView.swift; sourceTree = "<group>"; };
 		A2046C472620EF963F29AE2C /* TestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestsView.swift; sourceTree = "<group>"; };
 		A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTests.swift; sourceTree = "<group>"; };
+		A70A462511787F664A784E8C /* OnboardingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSheet.swift; sourceTree = "<group>"; };
+		B3BE1582A7D7BD6179655A24 /* InputLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabView.swift; sourceTree = "<group>"; };
+		C35FE125E315B47C5A37FDF0 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
 		CBE8293400FC63263EF99AF3 /* PlayersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayersView.swift; sourceTree = "<group>"; };
+		CC733FB33BA5840466775FA6 /* LabEmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabEmptyStates.swift; sourceTree = "<group>"; };
 		CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsService.swift; sourceTree = "<group>"; };
 		CFA2849BB92392E532E514F6 /* EffectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectsView.swift; sourceTree = "<group>"; };
+		CFCC89545FAE50885595B3AA /* InputLabRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabRecording.swift; sourceTree = "<group>"; };
+		D1B8DE1973DE36BBB47BF675 /* InputLabAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabAnalysisTests.swift; sourceTree = "<group>"; };
 		D24394A429FC00BE2DD62181 /* TriggerEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerEditor.swift; sourceTree = "<group>"; };
+		D46AEAF144F300135713355B /* ComposerDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerDocument.swift; sourceTree = "<group>"; };
 		D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		D97BF6B1BCAB08D2FBD5016E /* TactileLabUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E076393BB9A133CE23F81299 /* TriggerParameterEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerParameterEditor.swift; sourceTree = "<group>"; };
 		E1DE8A37C9A2DA44BA70A801 /* DualSense Adaptor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "DualSense Adaptor"; path = .; sourceTree = SOURCE_ROOT; };
 		E2590748E86C9DA795EB077D /* LabSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabSession.swift; sourceTree = "<group>"; };
+		E699339808F0D3DC98CC058D /* ComposerTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTimeline.swift; sourceTree = "<group>"; };
 		E97B3CB0543655BEABBF367E /* TactileLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TactileLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20C005A582380F684992A85 /* ComposerCodeExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerCodeExport.swift; sourceTree = "<group>"; };
 		F2E7949EC60661AB9B4F557A /* ControllerDiagram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerDiagram.swift; sourceTree = "<group>"; };
 		F469BEFB9C7243E4226CFBFA /* LabUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabUITests.swift; sourceTree = "<group>"; };
+		FB80DDC56529BCA95FBAB10A /* SpeakerPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPanels.swift; sourceTree = "<group>"; };
 		FE46081E9B123EF593E97744 /* InputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputView.swift; sourceTree = "<group>"; };
 		FF9882AFBEE07761B289BEF7 /* TactileLab.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = TactileLab.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -91,11 +153,50 @@
 		11F13F1A40BBA33DE16E2240 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F20C005A582380F684992A85 /* ComposerCodeExport.swift */,
+				D46AEAF144F300135713355B /* ComposerDocument.swift */,
+				4DDFB9BE53E3DDACABC832C6 /* ComposerModel.swift */,
+				4180E46AD35515596AD3DCCB /* ComposerRenderer.swift */,
+				968697B86F83790DE1E62F46 /* ComposerTrigger.swift */,
 				77F9153FF686BB225228C7B5 /* GuidedCheck.swift */,
+				72BF65371EB0F0CEF80F633E /* InputLabAnalysis.swift */,
+				3760537C883827C3CF807E08 /* InputLabHealthReport.swift */,
+				CFCC89545FAE50885595B3AA /* InputLabRecording.swift */,
+				12FA932B713E46D3E75B27AF /* InputLabStore.swift */,
 				69D9259E306C4360EE0F4857 /* LabModels.swift */,
 				E2590748E86C9DA795EB077D /* LabSession.swift */,
+				69F5AFE36FB2B17D83DB4E1F /* ProfileLabStore.swift */,
+				53143E7A746078E3F8B3BC5A /* ProfileModels.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		4B8AF9C8D6C3F2299E25A272 /* Profiles */ = {
+			isa = PBXGroup;
+			children = (
+				15E9E1CF030BA6BC78234C53 /* ProfileEditorSheet.swift */,
+				0DD7C3F27795B5512E085727 /* ProfilesView.swift */,
+			);
+			path = Profiles;
+			sourceTree = "<group>";
+		};
+		56BCFA54005A1F0DC1435C68 /* Composer */ = {
+			isa = PBXGroup;
+			children = (
+				061BB30C1AE40022E359C3B9 /* ComposerInspector.swift */,
+				E699339808F0D3DC98CC058D /* ComposerTimeline.swift */,
+				C35FE125E315B47C5A37FDF0 /* ComposerView.swift */,
+				6039D590346F13651816B4B5 /* LabCardParts.swift */,
+			);
+			path = Composer;
+			sourceTree = "<group>";
+		};
+		7E5E78AF5E4C45B1D862DBEE /* MenuBar */ = {
+			isa = PBXGroup;
+			children = (
+				98CAFE56629937055D90727E /* LabMenuBarContent.swift */,
+			);
+			path = MenuBar;
 			sourceTree = "<group>";
 		};
 		894256ACDA0EDC293CF438FF = {
@@ -121,6 +222,7 @@
 			isa = PBXGroup;
 			children = (
 				89A63F1CD36ADAB2C1A32E87 /* ControllerOperations.swift */,
+				8DE95B5BD5708B406F77324B /* ControllerOperations+Composer.swift */,
 				CCEBBDF7DC59926F804ABAA6 /* DiagnosticsService.swift */,
 				6B0CF687EC934AB2592DA794 /* LiveMonitor.swift */,
 			);
@@ -130,9 +232,31 @@
 		9308090C5C88EDE01F5C2A5B /* TactileLabTests */ = {
 			isa = PBXGroup;
 			children = (
+				D1B8DE1973DE36BBB47BF675 /* InputLabAnalysisTests.swift */,
+				43374D3776EA906F3BD9D9BC /* InputLabStoreTests.swift */,
+				21F77061A226B4766445BA11 /* ProfileStoreTests.swift */,
 				A6B23A50BB5BF8D9DE576C8F /* SessionTests.swift */,
 			);
 			path = TactileLabTests;
+			sourceTree = "<group>";
+		};
+		976E26063CFE13FFD85F3FD3 /* Speaker */ = {
+			isa = PBXGroup;
+			children = (
+				FB80DDC56529BCA95FBAB10A /* SpeakerPanels.swift */,
+			);
+			path = Speaker;
+			sourceTree = "<group>";
+		};
+		A46D147CBE88B6507EAE98B1 /* InputLab */ = {
+			isa = PBXGroup;
+			children = (
+				7C982DF31DD23CC0B6153247 /* InputLabPollingCard.swift */,
+				5EB522B399DB32CF8F1A0F58 /* InputLabStickCard.swift */,
+				B3BE1582A7D7BD6179655A24 /* InputLabView.swift */,
+				42CE0653C41E3EF71B9F87F6 /* LabCard.swift */,
+			);
+			path = InputLab;
 			sourceTree = "<group>";
 		};
 		C460EB4EC323E257E0B02F7D /* App */ = {
@@ -143,6 +267,15 @@
 				E4ACB2BF0716C20651AB100D /* TactileLabUITests */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		C574964682CC85594AF7EE0A /* Triggers */ = {
+			isa = PBXGroup;
+			children = (
+				8F0D65E8B63F69C801F89396 /* TriggerDesignerView.swift */,
+				E076393BB9A133CE23F81299 /* TriggerParameterEditor.swift */,
+			);
+			path = Triggers;
 			sourceTree = "<group>";
 		};
 		D28A4E72E030F1D317FF3F9C /* Packages */ = {
@@ -174,6 +307,13 @@
 				CBE8293400FC63263EF99AF3 /* PlayersView.swift */,
 				A2046C472620EF963F29AE2C /* TestsView.swift */,
 				D24394A429FC00BE2DD62181 /* TriggerEditor.swift */,
+				56BCFA54005A1F0DC1435C68 /* Composer */,
+				A46D147CBE88B6507EAE98B1 /* InputLab */,
+				7E5E78AF5E4C45B1D862DBEE /* MenuBar */,
+				FD7D79491F79C058846D55E2 /* Onboarding */,
+				4B8AF9C8D6C3F2299E25A272 /* Profiles */,
+				976E26063CFE13FFD85F3FD3 /* Speaker */,
+				C574964682CC85594AF7EE0A /* Triggers */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -189,6 +329,15 @@
 				E81F75B98164F596F996F5CE /* Views */,
 			);
 			path = TactileLab;
+			sourceTree = "<group>";
+		};
+		FD7D79491F79C058846D55E2 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				CC733FB33BA5840466775FA6 /* LabEmptyStates.swift */,
+				A70A462511787F664A784E8C /* OnboardingSheet.swift */,
+			);
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -315,6 +464,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C99C3A8D27B887C00ABE0D16 /* InputLabAnalysisTests.swift in Sources */,
+				3DDDAA8BF86B8E9BDAD36835 /* InputLabStoreTests.swift in Sources */,
+				DCFAD57B575A5A95754E98A6 /* ProfileStoreTests.swift in Sources */,
 				46DA9DD0A46AA733742BA7E2 /* SessionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -324,21 +476,49 @@
 			buildActionMask = 2147483647;
 			files = (
 				C82099B45CEABD80D7953E65 /* AudioView.swift in Sources */,
+				366170F7D104DE7C72F80AA8 /* ComposerCodeExport.swift in Sources */,
+				6F7C595225CF13374E6B660F /* ComposerDocument.swift in Sources */,
+				E0D9AF5BBB776078A69A5548 /* ComposerInspector.swift in Sources */,
+				DD4D97DBE1BF9A91C6F3823F /* ComposerModel.swift in Sources */,
+				BA1467407C18F245C2708483 /* ComposerRenderer.swift in Sources */,
+				6EC20CD4E104D362FF06BE40 /* ComposerTimeline.swift in Sources */,
+				DBC8CA0F48CAD7BFD25A3830 /* ComposerTrigger.swift in Sources */,
+				FBA349BCE8675247B04DFB40 /* ComposerView.swift in Sources */,
 				77B2041F1FE3AE3893BBD053 /* ControllerDiagram.swift in Sources */,
+				430AE70CE76EF06753F720D2 /* ControllerOperations+Composer.swift in Sources */,
 				BDFDF30BED5461E8A939FDBD /* ControllerOperations.swift in Sources */,
 				A43377246A66646A4C4A7937 /* DiagnosticsService.swift in Sources */,
 				3A0BC37EF1F8769406D11ED1 /* DiagnosticsView.swift in Sources */,
 				22112CA80CB0BE904B470E1E /* EffectsView.swift in Sources */,
 				BD389F604DF0754A798A5980 /* GuidedCheck.swift in Sources */,
+				ECC809FDF7B4E2DE4865C086 /* InputLabAnalysis.swift in Sources */,
+				04ADD3459C63D0CC6B336841 /* InputLabHealthReport.swift in Sources */,
+				76712FCA297ECEA2A12650AE /* InputLabPollingCard.swift in Sources */,
+				221BE5C8CA5DD3E737E4479B /* InputLabRecording.swift in Sources */,
+				1C009275C1CB567446BE00CE /* InputLabStickCard.swift in Sources */,
+				A4219B5915B280F8029D4D89 /* InputLabStore.swift in Sources */,
+				33146F43AE427B9847DCE9A0 /* InputLabView.swift in Sources */,
 				0E7B99967073AE1442F543B1 /* InputView.swift in Sources */,
+				03006FE2C2488853A76085AB /* LabCard.swift in Sources */,
+				12760962F051E46FDE086844 /* LabCardParts.swift in Sources */,
+				87F3CF5183C6779E9E72BE71 /* LabEmptyStates.swift in Sources */,
+				373C74405166548F3E426EDE /* LabMenuBarContent.swift in Sources */,
 				926AE7128C758FDAB618C1FD /* LabModels.swift in Sources */,
 				DB3945BF383F7F098ABE6AA4 /* LabRootView.swift in Sources */,
 				42AE9174B69655477E4CE564 /* LabSession.swift in Sources */,
 				D970A900DE1B6DEC24A87749 /* LiveMonitor.swift in Sources */,
+				1F0C9199F13F207DAB4A8427 /* OnboardingSheet.swift in Sources */,
 				6D0D648A3CAE0EC1242B8639 /* PlayersView.swift in Sources */,
+				98F0BC70B876682EEC9EE013 /* ProfileEditorSheet.swift in Sources */,
+				BE8A94C07A143FF38392C176 /* ProfileLabStore.swift in Sources */,
+				14FC6B85250BB16E656A2E68 /* ProfileModels.swift in Sources */,
+				34BF3364E382BAD11F18761C /* ProfilesView.swift in Sources */,
+				792092A37685DDC86EC83BB8 /* SpeakerPanels.swift in Sources */,
 				5D3257B51EE2B5FDD5BD5E70 /* TactileLabApp.swift in Sources */,
 				408D86799B5F21EB6CC168B8 /* TestsView.swift in Sources */,
+				21A649B5F8DC4B23C46A91AF /* TriggerDesignerView.swift in Sources */,
 				7046F4D954D5CB764D91F9FD /* TriggerEditor.swift in Sources */,
+				21B9EA7A585712186BD20215 /* TriggerParameterEditor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,43 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The glass card used by the Composer, Trigger Designer, Speaker and Effects
-/// screens: the same 16 pt padding and 22 pt corner radius as the Players
-/// cards, a header with a symbol, title, optional subtitle and accessory.
-struct LabCard<Content: View, Accessory: View>: View {
-    let title: String
-    var symbol: String?
-    var subtitle: String?
-    var tint: Color = .clear
-    @ViewBuilder var accessory: Accessory
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let symbol { Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 18) }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
-                    if let subtitle {
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 8)
-                accessory
-            }
-            content
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 22))
-    }
-}
-
-extension LabCard where Accessory == EmptyView {
-    init(title: String, symbol: String? = nil, subtitle: String? = nil, tint: Color = .clear, @ViewBuilder content: () -> Content) {
-        self.init(title: title, symbol: symbol, subtitle: subtitle, tint: tint, accessory: { EmptyView() }, content: content)
-    }
-}
+// `LabCard` itself lives in Views/InputLab/LabCard.swift (shared by every screen).
 
 /// Screen header matching the Players screen: title, explanation, trailing controls.
 struct LabScreenHeader<Trailing: View>: View {

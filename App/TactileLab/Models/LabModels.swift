@@ -2,7 +2,9 @@ import Foundation
 import Tactile
 
 enum LabTab: String, CaseIterable, Identifiable {
-    case input = "Input", effects = "Effects", audio = "Audio", diagnostics = "Diagnostics", tests = "Tests", players = "Players"
+    // The first six keep their ⌘1–⌘6 shortcuts (UI tests rely on them); the rest follow in sidebar order.
+    case input = "Input", effects = "Effects", audio = "Speaker & Audio", diagnostics = "Diagnostics", tests = "Tests", players = "Players"
+    case composer = "Composer", triggers = "Triggers", inputLab = "Input Lab", profiles = "Profiles"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -13,6 +15,10 @@ enum LabTab: String, CaseIterable, Identifiable {
         case .audio: "speaker.wave.2"
         case .diagnostics: "stethoscope"
         case .tests: "checklist"
+        case .composer: "timeline.selection"
+        case .triggers: "l2.button.angledtop.vertical.left"
+        case .inputLab: "waveform.path.ecg"
+        case .profiles: "person.crop.rectangle.stack"
         }
     }
 }
@@ -144,6 +150,10 @@ enum LabCommand: Sendable {
     case speaker(URL, SpeakerAudioFraming, Int, Float, AudioSettings)
     case scan
     case record(UplinkExtractor, OpusStreamFormat, URL)
+    /// A Composer pattern: actuator haptics from a rendered file plus trigger and lightbar keys on schedule.
+    case composition(ComposerPlaybackPlan)
+    /// Speaker audio on the haptics pump's shared 0x36 stream (Tactile 0.3).
+    case sharedSpeaker(URL, Float, AudioSettings, SpeakerAudioFraming.Destination)
 }
 
 struct OperationResult: Sendable {

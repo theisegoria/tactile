@@ -102,6 +102,10 @@ struct LabRootView: View {
             Group {
                 switch session.tab {
                 case .input: InputView(session: session)
+                case .composer: ComposerView(session: session)
+                case .triggers: TriggerDesignerView(session: session)
+                case .inputLab: InputLabView(session: session)
+                case .profiles: ProfilesView(session: session)
                 case .effects: EffectsView(session: session)
                 case .audio: AudioView(session: session)
                 case .diagnostics: DiagnosticsView(session: session)

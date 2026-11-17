@@ -10,6 +10,7 @@ struct TactileLabApp: App {
     var body: some Scene {
         Window("Tactile Lab", id: "lab") {
             LabRootView(session: session)
+                .labOnboarding(session: session)
                 .frame(minWidth: 860, minHeight: 660)
                 .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--dark") ? .dark : (ProcessInfo.processInfo.arguments.contains("--light") ? .light : nil))
                 .task { delegate.session = session; await session.start() }
@@ -29,11 +30,23 @@ struct TactileLabApp: App {
                 Button("Stop All") { Task { await session.stopAll() } }.keyboardShortcut(".", modifiers: .command)
                 Button("Retry Connection") { Task { await session.reconnect() } }.keyboardShortcut("r", modifiers: [.command, .shift])
                 Divider()
+                // ⌘1–⌘9 for the first nine sections (⌘0 opens the window).
                 ForEach(Array(LabTab.allCases.enumerated()), id: \.element.id) { index, tab in
-                    Button(tab.rawValue) { session.tab = tab }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    if index < 9 {
+                        Button(tab.rawValue) { session.tab = tab }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    } else {
+                        Button(tab.rawValue) { session.tab = tab }
+                    }
                 }
             }
         }
+
+        MenuBarExtra {
+            LabMenuBarContent(session: session)
+        } label: {
+            LabMenuBarLabel(session: session)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 

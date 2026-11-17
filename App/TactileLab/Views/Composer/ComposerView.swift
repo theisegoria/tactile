@@ -191,13 +191,13 @@ struct ComposerView: View {
 
     private func play() {
         run {
-            let url = try model.renderPlaybackFile()
-            let length = model.playLength
+            let plan = try model.playbackPlan()
+            let length = plan.length
             // The session holds one test length for every operation; play for
             // the pattern's length, then put the user's setting back.
             let previous = session.duration
             session.duration = length
-            session.perform(.hapticFile(url, 1), name: "Composer", settings: "pattern=\(model.document.name); length=\(String(format: "%.3f", length))s; actuator mix 3 kHz stereo WAV")
+            session.perform(.composition(plan), name: "Composer", settings: "pattern=\(model.document.name); length=\(String(format: "%.3f", length))s; actuator mix 3 kHz stereo WAV; \(plan.outputKeys.count) trigger/lightbar keys")
             session.duration = previous
             if session.activeOperation == "Composer" { model.startPlayhead(length: length) }
         }

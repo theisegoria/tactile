@@ -184,6 +184,12 @@ struct AudioView: View {
             // Sub-packet layout (default): payload offset and prefix apply only to the research layout.
             framing.destination = path == .headphones ? .headphones : .speaker
             guard framing.isValid, framing.maxPacketBytes > 0 else { throw LabError.invalid("Invalid speaker header, payload, length prefix or CRC layout.") }
+            if framing.layout == .subPackets {
+                // The 0.3 layout rides on the haptics pump's shared stream, as the library does.
+                session.perform(.sharedSpeaker(file, Float(gain), routing, framing.destination), name: "Experimental speaker",
+                                settings: "\(routingDescription); layout=shared-stream; file=\(file.lastPathComponent); gain=\(gain)")
+                return
+            }
             session.perform(.speaker(file, framing, bitrate, Float(gain), routing), name: "Experimental speaker", settings: "\(routingDescription); layout=\(framing.layout.rawValue); file=\(file.lastPathComponent); bytes=\(reportLength); offset=\(payloadOffset); prefix=\(prefix.rawValue); tag=\(tag); highSequence=\(highSequence); bitrate=\(bitrate); gain=\(gain)")
         } catch { session.showError(error) }
     }

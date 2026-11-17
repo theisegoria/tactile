@@ -117,6 +117,10 @@ actor ControllerOperations {
             }
             result = OperationResult(summary: "Experimental speaker stream \(stats.map { $0.description } ?? "reached its time limit; partial packet counts unavailable"). Audible result remains unverified.",
                                      metrics: stats.map { ["speakerPacketsSent": Double($0.packetsSent), "speakerOversizedPackets": Double($0.packetsDroppedOversize), "speakerSendFailures": Double($0.sendFailures), "speakerMaxLatenessMs": $0.maxLatenessMs] } ?? [:])
+        case .composition(let plan):
+            result = try await Self.executeComposition(plan, on: c, duration: duration)
+        case .sharedSpeaker(let url, let gain, let routing, let destination):
+            result = try await Self.executeSharedSpeaker(url: url, gain: gain, routing: routing, destination: destination, on: c, duration: duration)
         case .scan:
             try await c.setAudio(AudioSettings(micVolume: 64))
             let scan = await c.scanForMicUplink(duration: .seconds(duration))
