@@ -1,6 +1,7 @@
 #include "tactile_pad.h"
 
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -31,6 +32,7 @@ TactilePad::TactilePad() {
 
 TactilePad::~TactilePad() {
     close_context(false);
+    if (pattern) { tactile_pattern_free(pattern); pattern = nullptr; }
 }
 
 // The context lives exactly while the node is in the tree: created on every
@@ -240,6 +242,31 @@ PackedByteArray TactilePad::trigger_slope_feedback(int64_t sp, int64_t ep, int64
 PackedByteArray TactilePad::trigger_bow(int64_t a, int64_t b, int64_t s, int64_t n) { tactile_trigger_effect e{}; return to_bytes(tactile_trigger_bow((int32_t)a, (int32_t)b, (int32_t)s, (int32_t)n, &e), e); }
 PackedByteArray TactilePad::trigger_galloping(int64_t a, int64_t b, int64_t f1, int64_t f2, int64_t f) { tactile_trigger_effect e{}; return to_bytes(tactile_trigger_galloping((int32_t)a, (int32_t)b, (int32_t)f1, (int32_t)f2, (int32_t)f, &e), e); }
 PackedByteArray TactilePad::trigger_machine(int64_t a, int64_t b, int64_t x, int64_t y, int64_t f, int64_t p) { tactile_trigger_effect e{}; return to_bytes(tactile_trigger_machine((int32_t)a, (int32_t)b, (int32_t)x, (int32_t)y, (int32_t)f, (int32_t)p, &e), e); }
+PackedByteArray TactilePad::trigger_preset(int64_t preset) { tactile_trigger_effect e{}; return to_bytes(tactile_trigger_from_preset((int32_t)preset, &e), e); }
+
+int64_t TactilePad::play_pattern_file(const String &path) {
+    if (!pad) return TACTILE_ERR_NOT_CONNECTED;
+    if (!pattern || path != pattern_path) {
+        const String full = ProjectSettings::get_singleton()->globalize_path(path);
+        tactile_pattern *loaded = nullptr;
+        const int32_t r = tactile_pattern_load_file(full.utf8().get_data(), &loaded);
+        if (r != TACTILE_OK) return r;
+        if (pattern) tactile_pattern_free(pattern);
+        pattern = loaded;
+        pattern_path = path;
+    }
+    return tactile_pattern_play(pad, pattern);
+}
+
+int64_t TactilePad::stop_pattern() { return pad ? tactile_pattern_stop(pad) : TACTILE_ERR_NOT_CONNECTED; }
+
+bool TactilePad::is_pattern_playing() const { return pad && tactile_pattern_is_playing(pad) == 1; }
+
+int64_t TactilePad::apply_profile_file(const String &path) {
+    if (!pad) return TACTILE_ERR_NOT_CONNECTED;
+    const String full = ProjectSettings::get_singleton()->globalize_path(path);
+    return tactile_profile_apply_file(pad, full.utf8().get_data());
+}
 
 void TactilePad::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_player", "player"), &TactilePad::set_player);
@@ -283,6 +310,11 @@ void TactilePad::_bind_methods() {
     ClassDB::bind_static_method("TactilePad", D_METHOD("trigger_bow", "start", "end", "strength", "snap_force"), &TactilePad::trigger_bow);
     ClassDB::bind_static_method("TactilePad", D_METHOD("trigger_galloping", "start", "end", "first_foot", "second_foot", "frequency"), &TactilePad::trigger_galloping);
     ClassDB::bind_static_method("TactilePad", D_METHOD("trigger_machine", "start", "end", "amplitude_a", "amplitude_b", "frequency", "period"), &TactilePad::trigger_machine);
+    ClassDB::bind_static_method("TactilePad", D_METHOD("trigger_preset", "preset"), &TactilePad::trigger_preset);
+    ClassDB::bind_method(D_METHOD("play_pattern_file", "path"), &TactilePad::play_pattern_file);
+    ClassDB::bind_method(D_METHOD("stop_pattern"), &TactilePad::stop_pattern);
+    ClassDB::bind_method(D_METHOD("is_pattern_playing"), &TactilePad::is_pattern_playing);
+    ClassDB::bind_method(D_METHOD("apply_profile_file", "path"), &TactilePad::apply_profile_file);
 
     ADD_SIGNAL(MethodInfo("controller_connected"));
     ADD_SIGNAL(MethodInfo("controller_disconnected"));
@@ -296,6 +328,13 @@ void TactilePad::_bind_methods() {
     BIND_CONSTANT(TACTILE_HAPTIC_LEFT);
     BIND_CONSTANT(TACTILE_HAPTIC_RIGHT);
     BIND_CONSTANT(TACTILE_HAPTIC_BOTH);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_OFF", TACTILE_TRIGGER_PRESET_OFF);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_WEAPON", TACTILE_TRIGGER_PRESET_WEAPON);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_BOW", TACTILE_TRIGGER_PRESET_BOW);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_BRAKE", TACTILE_TRIGGER_PRESET_BRAKE);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_CLICK", TACTILE_TRIGGER_PRESET_CLICK);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_MACHINE_GUN", TACTILE_TRIGGER_PRESET_MACHINE_GUN);
+    ClassDB::bind_integer_constant(get_class_static(), "", "TRIGGER_PRESET_GALLOP", TACTILE_TRIGGER_PRESET_GALLOP);
     ClassDB::bind_integer_constant(get_class_static(), "", "BUTTON_CROSS", TACTILE_BUTTON_CROSS);
     ClassDB::bind_integer_constant(get_class_static(), "", "BUTTON_CIRCLE", TACTILE_BUTTON_CIRCLE);
     ClassDB::bind_integer_constant(get_class_static(), "", "BUTTON_SQUARE", TACTILE_BUTTON_SQUARE);

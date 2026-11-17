@@ -8,6 +8,7 @@
 
 struct tactile_context;
 struct tactile_controller;
+struct tactile_pattern;
 
 UENUM(BlueprintType)
 enum class ETactileTriggerSide : uint8 { Left = 0, Right = 1 };
@@ -17,6 +18,10 @@ enum class ETactileHapticEffect : uint8 { Click = 0, Detent = 1, Texture = 2, Im
 
 UENUM(BlueprintType)
 enum class ETactileHapticSide : uint8 { Left = 0, Right = 1, Both = 2 };
+
+/** Named trigger effects (ABI 0.4). Bow, MachineGun and Gallop use unofficial effects. */
+UENUM(BlueprintType)
+enum class ETactileTriggerPreset : uint8 { Off = 0, Weapon = 1, Bow = 2, Brake = 3, Click = 4, MachineGun = 5, Gallop = 6 };
 
 // Not BlueprintType: Blueprint enums must be uint8. Blueprints use int32 masks with BitmaskEnum.
 UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
@@ -119,9 +124,22 @@ public:
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers|Unofficial") static FTactileTriggerEffect TriggerBow(int32 Start, int32 End, int32 Strength, int32 SnapForce);
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers|Unofficial") static FTactileTriggerEffect TriggerGalloping(int32 Start, int32 End, int32 FirstFoot, int32 SecondFoot, int32 Frequency);
     UFUNCTION(BlueprintPure, Category = "Tactile|Triggers|Unofficial") static FTactileTriggerEffect TriggerMachine(int32 Start, int32 End, int32 AmplitudeA, int32 AmplitudeB, int32 Frequency, int32 Period);
+    /** A named preset (ABI 0.4). */
+    UFUNCTION(BlueprintPure, Category = "Tactile|Triggers") static FTactileTriggerEffect TriggerPreset(ETactileTriggerPreset Preset);
+
+    // ---- Haptic patterns and profiles (ABI 0.4) ----
+    /** Plays a .tactilepattern on the active controller (non-blocking). Relative paths
+     *  resolve against the project's Content directory. Loaded patterns are cached by path. */
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Patterns") bool PlayPatternFile(const FString& Path);
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Patterns") void StopPattern();
+    UFUNCTION(BlueprintPure, Category = "Tactile|Patterns") bool IsPatternPlaying() const;
+    /** Applies a .tactileprofile (lightbar, player LEDs, triggers, haptic gain) to the active controller. */
+    UFUNCTION(BlueprintCallable, Category = "Tactile|Profiles") bool ApplyProfileFile(const FString& Path);
 
 private:
     tactile_controller* PlayerPad(int32 Player) const;
+    tactile_pattern* LoadPattern(const FString& Path);
+    TMap<FString, tactile_pattern*> Patterns;
     void TickPlayers();
 
     struct FPlayerSlotState

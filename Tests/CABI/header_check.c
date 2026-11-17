@@ -117,6 +117,43 @@ int main(void) {
         tactile_speaker_close(NULL);
     }
 
+    /* ABI 0.4: presets, patterns, profiles (no controller needed). */
+    {
+        tactile_trigger_effect e, w;
+        CHECK(tactile_trigger_from_preset(TACTILE_TRIGGER_PRESET_WEAPON, &e) == TACTILE_OK);
+        CHECK(tactile_trigger_weapon(2, 6, 8, &w) == TACTILE_OK && memcmp(e.bytes, w.bytes, 11) == 0);
+        CHECK(tactile_trigger_from_preset(TACTILE_TRIGGER_PRESET_OFF, &e) == TACTILE_OK && e.bytes[0] == 0x05);
+        CHECK(tactile_trigger_from_preset(99, &e) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_trigger_from_preset(TACTILE_TRIGGER_PRESET_BRAKE, NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+
+        const char *json =
+            "{\"schemaVersion\":1,\"name\":\"c\",\"tracks\":[{\"name\":\"t\",\"events\":["
+            "{\"time\":0,\"type\":\"effect\",\"effect\":{\"impact\":{\"intensity\":1}},\"side\":\"both\"},"
+            "{\"time\":0.05,\"type\":\"rumble\",\"left\":255,\"right\":0,\"duration\":0.05}]}]}";
+        tactile_pattern *pat = NULL;
+        CHECK(tactile_pattern_load_json(json, 0, NULL, &pat) == TACTILE_OK && pat != NULL);
+        CHECK(tactile_pattern_duration(pat) > 0.119 && tactile_pattern_duration(pat) < 0.121);
+        int32_t frames = tactile_pattern_render(pat, NULL, NULL, 0);
+        CHECK(frames == 360);
+        float left[360], right[360];
+        CHECK(tactile_pattern_render(pat, left, right, 360) == 360);
+        float peak = 0;
+        for (int i = 0; i < 360; i++) { if (left[i] > peak) peak = left[i]; }
+        CHECK(peak > 0.2f);
+        CHECK(tactile_pattern_play(NULL, pat) == TACTILE_ERR_INVALID_ARGUMENT);
+        tactile_pattern_free(pat);
+        tactile_pattern_free(NULL);
+        CHECK(tactile_pattern_duration(NULL) == 0);
+        pat = NULL;
+        CHECK(tactile_pattern_load_json("{\"schemaVersion\":7}", 0, NULL, &pat) == TACTILE_ERR_VERSION && pat == NULL);
+        CHECK(tactile_pattern_load_json("nope", 0, NULL, &pat) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_pattern_load_file("/nonexistent/x.tactilepattern", &pat) == TACTILE_ERR_NOT_FOUND);
+        CHECK(tactile_pattern_stop(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_pattern_is_playing(NULL) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_profile_apply_json(NULL, "{}", 0) == TACTILE_ERR_INVALID_ARGUMENT);
+        CHECK(tactile_profile_apply_file(NULL, "/nonexistent") == TACTILE_ERR_INVALID_ARGUMENT);
+    }
+
     /* Context lifecycle without hardware: replacing/removing the callback from
      * outside a callback fences it without deadlocking, discovery-time lookups
      * behave, and destroy returns. */

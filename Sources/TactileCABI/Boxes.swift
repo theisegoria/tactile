@@ -52,6 +52,18 @@ final class ControllerBox: @unchecked Sendable {
     private let invalidatedFlag = Atomic<Bool>(false)
     /// Player number (1-8), 0 when none. Written by the owning context.
     let player = Atomic<Int32>(0)
+    /// The haptic pattern playing on this controller (ABI 0.4), if any.
+    private let patternPlayer = Mutex<HapticPatternPlayer?>(nil)
+
+    /// Replaces any playing pattern with `player` and returns the previous one stopped.
+    func setPattern(_ player: HapticPatternPlayer?) {
+        let old = patternPlayer.withLock { p -> HapticPatternPlayer? in defer { p = player }; return p }
+        old?.stop()
+    }
+
+    func stopPattern() { setPattern(nil) }
+
+    func currentPattern() -> HapticPatternPlayer? { patternPlayer.withLock { $0 } }
 
     init(_ c: Controller) {
         controller = c
@@ -82,6 +94,7 @@ final class ControllerBox: @unchecked Sendable {
     /// already queued to finish before the controller is neutralised.
     func invalidate() -> Task<Void, Never> {
         invalidatedFlag.store(true, ordering: .releasing)
+        stopPattern()
         inputTask?.cancel()
         latest.withLock { s in s.generation &+= 1; s.value = nil }
         ops.finish()
@@ -433,5 +446,17 @@ final class SpeakerBox: Sendable {
         let c = owner.controller
         let q = queue
         blocking { await c.detachSpeaker(ifAttached: q) }
+    }
+}
+
+/// A loaded, pre-rendered haptic pattern (ABI 0.4).
+final class PatternBox: Sendable {
+    let pattern: HapticPattern
+    let preview: HapticPreview
+
+    init(pattern: HapticPattern, clipBase: URL?) throws {
+        self.pattern = pattern
+        preview = try HapticPatternRenderer.renderOffline(
+            pattern, clipLoader: HapticPatternRenderer.fileClipLoader(relativeTo: clipBase))
     }
 }
