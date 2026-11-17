@@ -4,10 +4,7 @@ public import TactileCore
 public import TactileTransport
 public import TactileHaptics
 
-/// Which adaptive trigger.
-public enum TriggerSide: String, Sendable, CaseIterable {
-    case left, right
-}
+// `TriggerSide` lives in TactileCore (TriggerEffectSpec.swift) since 0.4.
 
 /// A connected (or temporarily disconnected) controller. The object survives
 /// reconnects: owned output state is re-applied automatically when the same
