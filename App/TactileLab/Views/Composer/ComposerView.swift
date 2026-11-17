@@ -47,8 +47,7 @@ struct ComposerView: View {
         }
         .sheet(isPresented: $showCode) {
             CodeExportSheet(title: "Copy as Code — \(model.document.name)",
-                            code: ComposerExporters.all[0].code(for: model.document),
-                            planned: ComposerExporters.planned)
+                            code: { _ in ComposerExporters.all[0].code(for: model.document) })
         }
         .alert("Rename Pattern", isPresented: $renaming) {
             TextField("Name", text: $newName)

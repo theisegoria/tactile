@@ -56,7 +56,7 @@ struct SwiftComposerExporter: ComposerCodeExporter {
                     at(event.end, "try await controller.setRumble(.off)")
                 case .trigger(let change):
                     for side in Self.sides(change.side) {
-                        at(event.start, "try await controller.setTrigger(.\(side), \(change.design.swiftExpression))")
+                        at(event.start, "try await controller.setTrigger(.\(side), try TriggerEffectSpec.\(change.design.spec).effect())")
                         at(event.end, "try await controller.setTrigger(.\(side), .off)")
                     }
                 case .lightbar(let key):
