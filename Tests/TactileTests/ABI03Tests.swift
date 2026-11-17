@@ -82,8 +82,9 @@ final class SentReports: Sendable {
         #expect(MemoryLayout<tactile_haptics_metrics>.size == 104)
         #expect(MemoryLayout<tactile_haptics_metrics>.offset(of: \.buffered_ms) == 72)
         #expect(MemoryLayout<tactile_speaker_stats>.size == 88)
-        #expect(TactileCABI.tactile_abi_version() == 0x0000_0003)
-        #expect(String(cString: TactileCABI.tactile_version_string()) == "0.3.0")
+        // ABI 0.4 is additive: the 0.3 layouts above are unchanged.
+        #expect(TactileCABI.tactile_abi_version() == 0x0000_0004)
+        #expect(String(cString: TactileCABI.tactile_version_string()) == "0.4.0")
     }
 
     private func liveBox(_ reports: SentReports = SentReports(), transport: Transport = .bluetooth) -> (Controller, ControllerBox) {

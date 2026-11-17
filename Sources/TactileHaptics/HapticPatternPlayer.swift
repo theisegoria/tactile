@@ -44,6 +44,15 @@ public final class HapticPatternPlayer: Sendable {
         controls = pattern.controlTimeline()
     }
 
+    /// Uses an existing render of `pattern` (e.g. one shared by several players).
+    public init(pattern: HapticPattern, preview: HapticPreview, mixer: HapticsMixer, output: (any HapticPatternOutput)?) {
+        self.pattern = pattern
+        self.mixer = mixer
+        self.output = output
+        self.preview = preview
+        controls = pattern.controlTimeline()
+    }
+
     public var isPlaying: Bool { state.withLock { $0.playing } }
 
     /// Starts playback in a background task (restarting if already playing).

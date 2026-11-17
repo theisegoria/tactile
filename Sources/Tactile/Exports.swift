@@ -6,6 +6,6 @@
 
 /// Library version (semantic versioning; see CHANGELOG.md).
 public enum TactileVersion {
-    public static let string = "0.3.0"
-    public static let major = 0, minor = 3, patch = 0
+    public static let string = "0.4.0"
+    public static let major = 0, minor = 4, patch = 0
 }

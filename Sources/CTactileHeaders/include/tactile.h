@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 #define TACTILE_ABI_VERSION_MAJOR 0
-#define TACTILE_ABI_VERSION_MINOR 3
+#define TACTILE_ABI_VERSION_MINOR 4
 #define TACTILE_ABI_VERSION ((TACTILE_ABI_VERSION_MAJOR << 16) | TACTILE_ABI_VERSION_MINOR)
 
 typedef enum tactile_result {
@@ -257,7 +257,7 @@ typedef void (*tactile_event_callback)(void *user_data, tactile_controller *cont
 
 /* Returns TACTILE_ABI_VERSION of the loaded library. Thread-safe. */
 uint32_t tactile_abi_version(void);
-/* Static string, e.g. "0.3.0". Thread-safe. */
+/* Static string, e.g. "0.4.0". Thread-safe. */
 const char *tactile_version_string(void);
 /* Human-readable text for a result code (static string). Thread-safe. */
 const char *tactile_result_string(int32_t result);
@@ -419,6 +419,65 @@ int32_t tactile_speaker_set_destination(tactile_speaker *speaker, int32_t destin
 /* Drops queued audio. Non-blocking. */
 int32_t tactile_speaker_flush(tactile_speaker *speaker);
 int32_t tactile_speaker_get_stats(tactile_speaker *speaker, tactile_speaker_stats *out_stats);
+
+/* ---- Trigger presets, haptic patterns, profiles (ABI 0.4) --------------
+ * Hardware feel of presets and patterns is unverified; see CHANGELOG.md. */
+
+/* Named trigger effects built from the builders above. */
+typedef enum tactile_trigger_preset {
+    TACTILE_TRIGGER_PRESET_OFF = 0,
+    TACTILE_TRIGGER_PRESET_WEAPON = 1,       /* weapon(2, 6, 8) */
+    TACTILE_TRIGGER_PRESET_BOW = 2,          /* bow(1, 6, 6, 8); unofficial effect */
+    TACTILE_TRIGGER_PRESET_BRAKE = 3,        /* slope_feedback(0, 9, 1, 8) */
+    TACTILE_TRIGGER_PRESET_CLICK = 4,        /* weapon(4, 5, 8) */
+    TACTILE_TRIGGER_PRESET_MACHINE_GUN = 5,  /* machine(1, 9, 7, 3, 9, 2); unofficial */
+    TACTILE_TRIGGER_PRESET_GALLOP = 6        /* galloping(0, 9, 2, 5, 3); unofficial */
+} tactile_trigger_preset;
+
+/* Pure; thread-safe. TACTILE_ERR_INVALID_ARGUMENT for an unknown preset. */
+int32_t tactile_trigger_from_preset(int32_t preset, tactile_trigger_effect *out);
+
+/* A loaded haptic pattern (.tactilepattern JSON, schema version 1): timed
+ * parametric effects, audio clips, rumble, trigger changes and lightbar keys.
+ * Loading renders the haptic part (and reads its audio clips) once, so play
+ * is cheap. Immutable after loading: safe to use from any thread and on
+ * several controllers at once. */
+typedef struct tactile_pattern tactile_pattern; /* opaque */
+
+/* Loads a .tactilepattern file; audio clip paths resolve against its folder.
+ * TACTILE_ERR_NOT_FOUND (no file), TACTILE_ERR_VERSION (newer schema),
+ * TACTILE_ERR_IO (unreadable file or clip), TACTILE_ERR_INVALID_ARGUMENT (bad JSON). */
+int32_t tactile_pattern_load_file(const char *path, tactile_pattern **out_pattern);
+/* Loads pattern JSON from memory (length 0 = NUL-terminated). Relative clip
+ * paths resolve against clip_base_dir (may be NULL: the working directory). */
+int32_t tactile_pattern_load_json(const char *json, size_t length, const char *clip_base_dir, tactile_pattern **out_pattern);
+/* Frees a pattern. Playback already started keeps its own reference. */
+void tactile_pattern_free(tactile_pattern *pattern);
+/* Rendered length in seconds (0 for NULL). */
+double tactile_pattern_duration(const tactile_pattern *pattern);
+/* Copies up to capacity_frames of the rendered haptic PCM (3 kHz, -1..1; left
+ * and right grip actuators) for a waveform preview. Either buffer may be NULL.
+ * Returns the total frame count (call with capacity 0 to size the buffers). */
+int32_t tactile_pattern_render(const tactile_pattern *pattern, float *out_left, float *out_right, int32_t capacity_frames);
+/* Starts the pattern on a controller, replacing any pattern playing there.
+ * Non-blocking: starts haptics if needed and plays asynchronously (Bluetooth
+ * only; over USB the start fails with TACTILE_ERR_UNSUPPORTED, readable from
+ * tactile_controller_last_error). While a pattern plays it owns the haptics PCM
+ * stream: do not call tactile_haptics_write_pcm at the same time. */
+int32_t tactile_pattern_play(tactile_controller *controller, const tactile_pattern *pattern);
+/* Stops the pattern playing on the controller (no-op if none). Non-blocking. */
+int32_t tactile_pattern_stop(tactile_controller *controller);
+/* 1 while a pattern plays on the controller, 0 otherwise, or a negative tactile_result. */
+int32_t tactile_pattern_is_playing(tactile_controller *controller);
+
+/* Applies a controller profile (.tactileprofile JSON, schema version 1):
+ * lightbar, player LEDs, trigger effects and haptic gain, in one output
+ * report. Non-blocking like the other output calls. The profile's preferred
+ * pattern is not started. TACTILE_ERR_INVALID_ARGUMENT for an invalid
+ * profile (bad JSON or trigger parameters), TACTILE_ERR_VERSION for a newer
+ * schema, TACTILE_ERR_NOT_FOUND when the file does not exist. */
+int32_t tactile_profile_apply_file(tactile_controller *controller, const char *path);
+int32_t tactile_profile_apply_json(tactile_controller *controller, const char *json, size_t length);
 
 #ifdef __cplusplus
 }
