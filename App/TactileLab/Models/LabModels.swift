@@ -150,8 +150,9 @@ enum LabCommand: Sendable {
     case speaker(URL, SpeakerAudioFraming, Int, Float, AudioSettings)
     case scan
     case record(UplinkExtractor, OpusStreamFormat, URL)
-    /// A Composer pattern: actuator haptics from a rendered file plus trigger and lightbar keys on schedule.
-    case composition(ComposerPlaybackPlan)
+    /// A Composer pattern, played by the library's `HapticPatternPlayer`
+    /// (actuator PCM streamed, trigger and lightbar changes on schedule).
+    case pattern(HapticPattern)
     /// Speaker audio on the haptics pump's shared 0x36 stream (Tactile 0.3).
     case sharedSpeaker(URL, Float, AudioSettings, SpeakerAudioFraming.Destination)
 }
