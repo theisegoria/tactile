@@ -15,6 +15,8 @@ let package = Package(
         .library(name: "TactileHaptics", targets: ["TactileHaptics"]),
         .library(name: "TactileBridge", targets: ["TactileBridge"]),
         .library(name: "Tactile", targets: ["Tactile"]),
+        // System audio → haptics via ScreenCaptureKit (needs Screen Recording permission).
+        .library(name: "TactileSystemAudio", targets: ["TactileSystemAudio"]),
         // EXPERIMENTAL (gate 6): speaker / mic audio research.
         .library(name: "TactileAudio", targets: ["TactileAudio"]),
         // C ABI for engines and non-Swift hosts. Header: Sources/CTactileHeaders/include/tactile.h
@@ -36,6 +38,12 @@ let package = Package(
             dependencies: ["TactileCore"],
             swiftSettings: strict,
             linkerSettings: [.linkedFramework("AVFAudio")]
+        ),
+        .target(
+            name: "TactileSystemAudio",
+            dependencies: ["TactileHaptics"],
+            swiftSettings: strict,
+            linkerSettings: [.linkedFramework("ScreenCaptureKit"), .linkedFramework("CoreMedia"), .linkedFramework("CoreGraphics")]
         ),
         .target(
             name: "TactileAudio",
@@ -68,6 +76,7 @@ let package = Package(
         .testTarget(name: "TactileTests", dependencies: ["Tactile", "TactileTransport", "TactileCore", "TactileBridge", "TactileCABI", "CTactileHeaders"], swiftSettings: strict),
         .testTarget(name: "TactileCoreTests", dependencies: ["TactileCore"], swiftSettings: strict),
         .testTarget(name: "TactileAudioTests", dependencies: ["TactileAudio", "TactileCore"], swiftSettings: strict),
+        .testTarget(name: "TactileSystemAudioTests", dependencies: ["TactileSystemAudio", "TactileHaptics"], swiftSettings: strict),
         .testTarget(name: "TactileHapticsTests", dependencies: ["TactileHaptics", "TactileCore"], swiftSettings: strict),
     ],
     swiftLanguageModes: [.v6]
