@@ -26,57 +26,115 @@ struct AudioView: View {
     @State private var channels = 1
 
     var body: some View {
-        Form {
-            Section {
-                Label("Experimental audio over Bluetooth", systemImage: "flask").font(.headline)
-                Text("Routing, speaker framing, and microphone uplink behavior require physical verification. Packet transmission and decoder output do not establish that sound was heard or recorded from the controller.").font(.callout).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                LabScreenHeader(title: "Speaker & Audio",
+                                detail: "Controller speaker, headphone jack and microphone over Bluetooth. Packets leaving the Mac do not show that sound was heard or recorded; every result here needs your ears.") {
+                    LabTag(text: "Unverified on hardware", symbol: "flask")
+                }
+                NoControllerNotice(session: session)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 16) {
+                        CapabilitiesCard(session: session).frame(minWidth: 380)
+                        HeadsetStatusCard(readings: session.readings).frame(minWidth: 260, maxWidth: 360)
+                    }
+                    VStack(spacing: 16) {
+                        CapabilitiesCard(session: session)
+                        HeadsetStatusCard(readings: session.readings)
+                    }
+                }
+                routingCard
+                speakerCard
+                microphoneCard
             }
-            Section("Routing and volume") {
-                Picker("Output route", selection: $path) {
+            .padding(24)
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
+        }
+        .onChange(of: session.selectedID) { _, _ in candidate = -1 }
+        .accessibilityIdentifier("audioView")
+    }
+
+    private var routingCard: some View {
+        LabCard(title: "Routing and volume", symbol: "slider.horizontal.3",
+                subtitle: "Controller audio settings (output report 0x31). The meaning of individual values is unverified.") {
+            Button("Apply Routing", systemImage: "arrow.down.to.line") {
+                session.perform(.output(OutputState(audio: routing)), name: "Experimental routing", settings: routingDescription)
+            }
+            .buttonStyle(.glass)
+            .disabled(!session.canOperate)
+            .accessibilityIdentifier("applyRouting")
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Output path", selection: $path) {
                     Text("Internal speaker").tag(AudioOutputPath.speaker)
                     Text("Headphones").tag(AudioOutputPath.headphones)
                     Text("Left headphone").tag(AudioOutputPath.headphoneLeft)
                     Text("Left headphone + speaker").tag(AudioOutputPath.headphoneLeftAndSpeaker)
                 }
+                .frame(maxWidth: 360)
                 ValueSlider(title: "Speaker volume", value: $speakerVolume, range: 0...255)
                 ValueSlider(title: "Headphone volume", value: $headphoneVolume, range: 0...127)
                 ValueSlider(title: "Controller mic gain", value: $micVolume, range: 0...64)
-                Button("Test Routing") { session.perform(.output(OutputState(audio: routing)), name: "Experimental routing", settings: routingDescription) }.disabled(!session.canOperate)
             }
-            Section("Speaker playback") {
+        }
+    }
+
+    private var speakerCard: some View {
+        LabCard(title: "Speaker playback", symbol: "speaker.wave.2",
+                subtitle: "Streams a file as Opus in report 0x36 at the selected path, bounded by the test length. In 0.3 the speaker shares the haptics stream; stats below come from it.") {
+            Button("Play Speaker Test", systemImage: "play.fill") { play() }
+                .buttonStyle(.glassProminent)
+                .disabled(file == nil || !session.canOperate)
+                .accessibilityIdentifier("playSpeaker")
+        } content: {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Button("Choose Audio File…") { file = AudioFiles.choose() }
-                    Text(file?.lastPathComponent ?? "No file selected").foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Play Speaker Test") { play() }.disabled(file == nil || !session.canOperate)
+                    Button("Choose Audio File…") { file = AudioFiles.choose() }.buttonStyle(.glass)
+                    Text(file?.lastPathComponent ?? "No file selected").foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 0)
                 }
                 ValueSlider(title: "Playback gain", value: $gain, range: 0...4, precision: 2)
-                HStack {
-                    integer("Opus bitrate (6000–512000)", value: $bitrate)
-                    integer("Report length (8–65535)", value: $reportLength)
-                    Button("Use Descriptor") {
-                        if let size = session.diagnostics.descriptor.first(where: { $0.kind == .output && $0.reportID == 0x36 })?.byteLength { reportLength = size }
-                    }.disabled(!session.diagnostics.descriptor.contains(where: { $0.kind == .output && $0.reportID == 0x36 }))
-                }
+                StreamStatsView(session: session)
+                    .padding(12)
+                    .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 14))
                 DisclosureGroup("Framing controls · report 0x36") {
-                    HStack {
-                        integer("Payload offset", value: $payloadOffset)
-                        integer("Tag (0–15)", value: $tag)
-                        Picker("Length prefix", selection: $prefix) {
-                            Text("None").tag(SpeakerAudioFraming.LengthPrefix.none)
-                            Text("8-bit").tag(SpeakerAudioFraming.LengthPrefix.u8)
-                            Text("16-bit little endian").tag(SpeakerAudioFraming.LengthPrefix.u16LittleEndian)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            integer("Opus bitrate (6000–512000)", value: $bitrate)
+                            integer("Report length (8–65535)", value: $reportLength)
+                            Button("Use Descriptor") {
+                                if let size = session.diagnostics.descriptor.first(where: { $0.kind == .output && $0.reportID == 0x36 })?.byteLength { reportLength = size }
+                            }.disabled(!session.diagnostics.descriptor.contains(where: { $0.kind == .output && $0.reportID == 0x36 }))
                         }
+                        HStack {
+                            integer("Payload offset", value: $payloadOffset)
+                            integer("Tag (0–15)", value: $tag)
+                            Picker("Length prefix", selection: $prefix) {
+                                Text("None").tag(SpeakerAudioFraming.LengthPrefix.none)
+                                Text("8-bit").tag(SpeakerAudioFraming.LengthPrefix.u8)
+                                Text("16-bit little endian").tag(SpeakerAudioFraming.LengthPrefix.u16LittleEndian)
+                            }.fixedSize()
+                        }
+                        Toggle("Sequence in high nibble", isOn: $highSequence)
+                        Text("Bluetooth CRC is always enabled. Payload offset and prefix apply only to the research layout. The full report must fit; oversized encoded packets are dropped at their original playback time.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Toggle("Sequence in high nibble", isOn: $highSequence)
-                    Text("Bluetooth CRC is always enabled. The full report must fit the selected layout; oversized encoded packets are dropped at their original playback time.").font(.caption).foregroundStyle(.secondary)
+                    .padding(.top, 6)
                 }
             }
-            Section("Controller microphone uplink") {
-                HStack {
-                    Button("Scan for Microphone") { session.perform(.scan, name: "Microphone scan", settings: "bounded raw-input scan; mic gain 64") }.disabled(!session.canOperate)
-                    Text("Speak or tap near the controller while scanning.").font(.caption).foregroundStyle(.secondary)
-                }
+        }
+    }
+
+    private var microphoneCard: some View {
+        LabCard(title: "Controller microphone uplink", symbol: "mic",
+                subtitle: "A candidate layout remains unverified until you listen to its recording.") {
+            Button("Scan for Microphone") { session.perform(.scan, name: "Microphone scan", settings: "bounded raw-input scan; mic gain 64") }
+                .buttonStyle(.glass)
+                .disabled(!session.canOperate)
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Speak or tap near the controller while scanning.").font(.caption).foregroundStyle(.secondary)
                 Picker("Candidate layout", selection: $candidate) {
                     Text("Manual layout").tag(-1)
                     ForEach(Array(session.candidates.enumerated()), id: \.offset) { index, candidate in
@@ -96,17 +154,17 @@ struct AudioView: View {
                     integer("Trailer bytes", value: $trailer)
                 }
                 HStack {
-                    Picker("Sample rate", selection: $rate) { ForEach([8000.0, 12000, 16000, 24000, 48000], id: \.self) { Text("\(Int($0)) Hz").tag($0) } }
-                    Picker("Channels", selection: $channels) { Text("Mono").tag(1); Text("Stereo").tag(2) }
-                    Button("Record WAV…") { record() }.disabled(!session.canOperate)
+                    Picker("Sample rate", selection: $rate) { ForEach([8000.0, 12000, 16000, 24000, 48000], id: \.self) { Text("\(Int($0)) Hz").tag($0) } }.fixedSize()
+                    Picker("Channels", selection: $channels) { Text("Mono").tag(1); Text("Stereo").tag(2) }.fixedSize()
+                    Spacer(minLength: 0)
+                    Button("Record WAV…") { record() }.buttonStyle(.glassProminent).disabled(!session.canOperate)
                 }
-                Text("Without a length field, trailing zeros are retained because they may belong to the Opus packet. A candidate remains unverified until you listen to its recording.").font(.caption).foregroundStyle(.secondary)
+                Text("Without a length field, trailing zeros are retained because they may belong to the Opus packet.").font(.caption).foregroundStyle(.secondary)
                 ForEach(session.recordings, id: \.self) { path in
                     HStack { Text(URL(fileURLWithPath: path).lastPathComponent); Spacer(); Button("Reveal WAV") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) } }
                 }
             }
-        }.formStyle(.grouped)
-            .onChange(of: session.selectedID) { _, _ in candidate = -1 }
+        }
     }
 
     private var routing: AudioSettings { AudioSettings(headphoneVolume: UInt8(headphoneVolume), speakerVolume: UInt8(speakerVolume), micVolume: UInt8(micVolume), outputPath: path) }

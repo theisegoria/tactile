@@ -19,30 +19,49 @@ struct TriggerEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text($0) } }
-                Picker("Side", selection: $side) { ForEach(HapticSide.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) } }.frame(width: 200)
+            HStack(spacing: 16) {
+                Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text($0) } }.fixedSize()
+                Picker("Side", selection: $side) { ForEach(HapticSide.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) } }
+                    .pickerStyle(.segmented).frame(maxWidth: 240)
+                Spacer(minLength: 0)
             }
-            if preset == "Raw bytes" {
-                TextField("Exactly 11 hexadecimal bytes", text: $raw).textFieldStyle(.roundedBorder).font(.body.monospaced())
-            } else if preset.hasPrefix("Per-zone") {
-                TextField("Ten zone strengths (0–8), separated by commas", text: $zones).textFieldStyle(.roundedBorder)
-                if preset == "Per-zone vibration" { number("Frequency 0–255 Hz", value: $frequency) }
-            } else if preset != "Off" {
-                HStack { number("Start / position 0–9", value: $start); number("Strength / amplitude 0–8", value: $strength) }
-                if ["Weapon", "Slope", "Bow (unofficial)", "Galloping (unofficial)", "Machine (unofficial)"].contains(preset) {
-                    HStack { number("End zone 0–9", value: $end); number("End / snap / B strength", value: $secondStrength) }
+            Group {
+                if preset == "Raw bytes" {
+                    TextField("Exactly 11 hexadecimal bytes", text: $raw).textFieldStyle(.roundedBorder).font(.body.monospaced())
+                } else if preset.hasPrefix("Per-zone") {
+                    TextField("Ten zone strengths (0–8), separated by commas", text: $zones).textFieldStyle(.roundedBorder)
+                    if preset == "Per-zone vibration" { number("Frequency 0–255 Hz", value: $frequency) }
+                } else if preset != "Off" {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                        GridRow { number("Start / position 0–9", value: $start); number("Strength / amplitude 0–8", value: $strength) }
+                        if ["Weapon", "Slope", "Bow (unofficial)", "Galloping (unofficial)", "Machine (unofficial)"].contains(preset) {
+                            GridRow { number("End zone 0–9", value: $end); number("End / snap / B strength", value: $secondStrength) }
+                        }
+                        if ["Vibration", "Galloping (unofficial)", "Machine (unofficial)"].contains(preset) {
+                            GridRow {
+                                number("Frequency 0–255 Hz", value: $frequency)
+                                if preset == "Machine (unofficial)" { number("Period (tenths of a second)", value: $period) } else { Color.clear.frame(height: 1) }
+                            }
+                        }
+                        if preset == "Galloping (unofficial)" { GridRow { number("First foot 0–6", value: $firstFoot); number("Second foot 1–7", value: $secondFoot) } }
+                    }
+                } else {
+                    Text("Releases both triggers to no resistance.").font(.callout).foregroundStyle(.secondary)
                 }
-                if ["Vibration", "Galloping (unofficial)", "Machine (unofficial)"].contains(preset) {
-                    HStack { number("Frequency 0–255 Hz", value: $frequency); if preset == "Machine (unofficial)" { number("Period (tenths of a second)", value: $period) } }
-                }
-                if preset == "Galloping (unofficial)" { HStack { number("First foot 0–6", value: $firstFoot); number("Second foot 1–7", value: $secondFoot) } }
             }
             HStack {
-                if case .failure(let error) = validated { Text(String(describing: error)).font(.caption).foregroundStyle(.orange) }
-                else { Text(preset.contains("unofficial") || preset == "Raw bytes" ? "Experimental firmware behavior; observe the physical result." : "Parameters are validated before sending.").font(.caption).foregroundStyle(.secondary) }
+                if case .failure(let error) = validated {
+                    Label(String(describing: error), systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                } else {
+                    Label(preset.contains("unofficial") || preset == "Raw bytes" ? "Experimental firmware behavior; observe the physical result." : "Parameters are validated before sending.",
+                          systemImage: preset.contains("unofficial") || preset == "Raw bytes" ? "flask" : "checkmark.seal")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("Test Triggers") { apply() }.disabled(!session.canOperate || isInvalid).accessibilityIdentifier("testTriggers")
+                Button("Test Triggers", systemImage: "play.fill") { apply() }
+                    .buttonStyle(.glassProminent)
+                    .disabled(!session.canOperate || isInvalid)
+                    .accessibilityIdentifier("testTriggers")
             }
         }
     }
