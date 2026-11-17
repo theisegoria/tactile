@@ -2,58 +2,12 @@ import AVFAudio
 import Foundation
 import Tactile
 
-/// What a composition sends: the rendered actuator mix plus timed output
-/// changes for the trigger and lightbar tracks.
-struct ComposerPlaybackPlan: Sendable {
-    var actuatorFile: URL
-    var outputKeys: [ComposerOutputKey]
-    var length: Double
-}
+// MARK: Shared-stream speaker
 
-struct ComposerOutputKey: Sendable {
-    var time: Double
-    var state: OutputState
-}
-
-// MARK: Composer
-
-/// Executors for the Composer and the Speaker panel that `LabCommand` cannot
-/// reach yet. They are not called anywhere today. To wire them (main session,
-/// which owns LabModels.swift and ControllerOperations.swift):
-///
-///     // LabCommand
-///     case composition(ComposerPlaybackPlan)
-///     case sharedSpeaker(URL, Float, AudioSettings, SpeakerAudioFraming.Destination)
-///     // ControllerOperations.execute, after the simulated early return
-///     case .composition(let plan): result = try await Self.executeComposition(plan, on: c, duration: duration)
-///     case .sharedSpeaker(let url, let gain, let routing, let destination):
-///         result = try await Self.executeSharedSpeaker(url: url, gain: gain, routing: routing, destination: destination, on: c, duration: duration)
-///
-/// Both run inside `perform`, so they inherit its barrier, cancellation,
-/// Stop All reset and the simulated path (which sends nothing).
+/// The Speaker panel's executor for `LabCommand.sharedSpeaker`. It runs inside
+/// `perform`, so it inherits its barrier, cancellation, Stop All reset and
+/// the simulated path (which sends nothing).
 extension ControllerOperations {
-    static func executeComposition(_ plan: ComposerPlaybackPlan, on c: Controller, duration: Double) async throws -> OperationResult {
-        let length = min(duration, plan.length)
-        try await c.startHaptics()
-        let keys = plan.outputKeys.sorted { $0.time < $1.time }
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await AudioFileSource.play(url: plan.actuatorFile, mixer: c.haptics, gain: 1, shouldStop: { Task.isCancelled })
-            }
-            group.addTask {
-                let clock = ContinuousClock()
-                let start = clock.now
-                for key in keys where key.time < length {
-                    try await clock.sleep(until: start + .milliseconds(Int((key.time * 1000).rounded())))
-                    try await c.apply(key.state)
-                }
-            }
-            try await Task.sleep(for: .seconds(length))
-            group.cancelAll()
-        }
-        return OperationResult(summary: "Composition played (\(keys.count) output changes). Felt result remains unverified.")
-    }
-
     /// Speaker playback on the shared haptics stream (0.3): the file is
     /// resampled to 45 kHz stereo and queued into a `SpeakerQueue` attached to
     /// the haptics pump, which sends report 0x36 in place of 0x32 while audio

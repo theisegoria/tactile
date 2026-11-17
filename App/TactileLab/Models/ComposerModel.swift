@@ -19,6 +19,8 @@ final class ComposerModel {
     var grid = 0.05
     private(set) var fileURL: URL?
     private(set) var dirty = false
+    /// What the last open or save could not keep as is (shown in the preview card).
+    private(set) var notes: [String] = []
     private(set) var playing = false
     private var liveCommit: Task<Void, Never>?
     private var playTask: Task<Void, Never>?
@@ -102,8 +104,7 @@ final class ComposerModel {
 
     func addAudioClip(on kind: ComposerTrack.Kind, undoManager: UndoManager?) {
         guard kind.isActuator, let url = AudioFiles.choose() else { return }
-        var length = 1.0
-        if let samples = ComposerRenderer.decodedClip(url.path) { length = max(0.05, Double(samples.count) / ComposerMix.sampleRate) }
+        let length = max(0.05, ComposerClips.length(url.path) ?? 1)
         let start = snap(playhead)
         let event = ComposerEvent(start: start, duration: min(length, ComposerDocument.maximumDuration - start),
                                   content: .audioClip(.init(path: url.path)))
@@ -172,7 +173,7 @@ final class ComposerModel {
     }
 
     func rerender() {
-        mix = ComposerRenderer.render(document)
+        mix = ComposerMix.render(document)
     }
 
     // MARK: Files
@@ -181,7 +182,7 @@ final class ComposerModel {
         stopPlayhead()
         undoManager?.removeAllActions()
         document = ComposerDocument()
-        fileURL = nil; dirty = false; selection = nil; playhead = 0
+        fileURL = nil; dirty = false; selection = nil; playhead = 0; notes = []
         rerender()
     }
 
@@ -191,8 +192,10 @@ final class ComposerModel {
         panel.allowsMultipleSelection = false
         panel.message = "Open a Tactile pattern (.\(ComposerDocument.fileExtension))."
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let doc = try ComposerDocument.decode(Data(contentsOf: url))
+        var notes: [String] = []
+        let doc = try ComposerDocument.load(Data(contentsOf: url), clipBase: url.deletingLastPathComponent(), notes: &notes)
         stopPlayhead()
+        self.notes = notes
         undoManager?.removeAllActions()
         document = doc
         fileURL = url; dirty = false; selection = nil; playhead = 0
@@ -210,8 +213,10 @@ final class ComposerModel {
             url = chosen
         }
         guard let url else { return }
-        try document.encoded().write(to: url, options: .atomic)
+        try document.patternData().write(to: url, options: .atomic)
         fileURL = url; dirty = false
+        let dropped = document.unsupportedEventCount
+        notes = dropped > 0 ? ["\(dropped) event(s) of a kind the pattern format does not hold were not saved."] : []
     }
 
     func rename(_ name: String, undoManager: UndoManager?) {
@@ -222,27 +227,14 @@ final class ComposerModel {
 
     // MARK: Playback
 
-    /// Length of a play request: the content plus a short tail.
-    var playLength: Double { min(ComposerDocument.maximumDuration, max(0.1, document.contentEnd + 0.25)) }
+    /// Length of a play request: the rendered content plus a short tail.
+    var playLength: Double { min(ComposerDocument.maximumDuration, max(0.1, max(document.contentEnd, mix.duration) + 0.25)) }
 
-    /// Renders the actuator mix to a temporary WAV for the session's
-    /// file-haptics operation.
-    func renderPlaybackFile() throws -> URL {
-        let mix = ComposerRenderer.render(document, length: playLength)
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("TactileComposer", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent("\(ComposerExporters.fileSafe(document.name)).wav")
-        try ComposerRenderer.writeWAV(mix, to: url)
-        return url
-    }
+    /// The library pattern the session plays (`LabCommand.pattern`).
+    var playbackPattern: HapticPattern { document.pattern }
 
-    /// The full plan (actuator mix plus timed trigger/lightbar changes) for a
-    /// `composition` command once the main session wires it.
-    func playbackPlan() throws -> ComposerPlaybackPlan {
-        ComposerPlaybackPlan(actuatorFile: try renderPlaybackFile(),
-                             outputKeys: ComposerRenderer.outputKeys(for: document).map { ComposerOutputKey(time: $0.time, state: $0.state) },
-                             length: playLength)
-    }
+    /// The path a code snippet loads: the saved file, or a placeholder name.
+    var codePath: String { fileURL?.path ?? "\(Self.fileSafe(document.name)).\(HapticPattern.fileExtension)" }
 
     /// Moves the playhead in real time; the output itself is the session's.
     func startPlayhead(length: Double) {
@@ -268,8 +260,8 @@ final class ComposerModel {
     }
 }
 
-extension ComposerExporters {
-    static func fileSafe(_ name: String) -> String {
+extension ComposerModel {
+    nonisolated static func fileSafe(_ name: String) -> String {
         let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/:\\")).joined(separator: "-")
         return cleaned.isEmpty ? "Pattern" : cleaned
     }

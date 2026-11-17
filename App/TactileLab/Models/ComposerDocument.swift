@@ -2,16 +2,18 @@ import Foundation
 import Tactile
 import UniformTypeIdentifiers
 
-/// A haptic composition saved as `.tactilepattern` JSON.
+/// The Composer's editing model: four lanes (left and right actuator,
+/// triggers, lightbar) of events with a start and a length.
 ///
-/// The layout mirrors what the library's planned `HapticPattern` carries:
-/// a schema version, tracks, and events with a start and a duration in
-/// seconds. Event content uses a `type` discriminator so new kinds can be
-/// added without breaking older files; unknown kinds decode as `.unsupported`
-/// and are kept when the file is saved again.
+/// Files are the library's `HapticPattern` (`.tactilepattern`, schema 1):
+/// `ComposerPattern.swift` converts both ways, and the preview and playback
+/// use the converted pattern. This type's own Codable form is the app's
+/// pre-0.4 Composer file format, still read by `load` so older files open;
+/// unknown event kinds in those files decode as `.unsupported` (they cannot
+/// be written to the library format).
 struct ComposerDocument: Codable, Equatable, Sendable {
     static let schemaVersion = 1
-    static let fileExtension = "tactilepattern"
+    static let fileExtension = HapticPattern.fileExtension
     /// Longest composition the lab plays (the operation limit is 60 s).
     static let maximumDuration = 60.0
 
@@ -148,6 +150,9 @@ struct ComposerEvent: Codable, Equatable, Identifiable, Sendable {
         var path: String
         var gain: Float = 1
         var trim: Double = 0
+        /// Library clip side when it is not the lane's own (a stereo clip on
+        /// `.both`); nil plays a mono mix on the lane's actuator.
+        var side: HapticSide?
         var url: URL { URL(fileURLWithPath: path) }
         var displayName: String { url.lastPathComponent }
     }
@@ -257,15 +262,10 @@ enum ComposerFileError: LocalizedError {
 }
 
 extension ComposerDocument {
-    func encoded() throws -> Data {
+    /// The pre-0.4 app format (tests and migration only; Save writes `patternData()`).
+    func legacyEncoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(self)
-    }
-
-    static func decode(_ data: Data) throws -> ComposerDocument {
-        let doc = try JSONDecoder().decode(ComposerDocument.self, from: data)
-        guard doc.schemaVersion <= schemaVersion else { throw ComposerFileError.newerSchema(doc.schemaVersion) }
-        return doc
     }
 }

@@ -1,11 +1,12 @@
 import Foundation
 import Tactile
 
-/// An editable adaptive-trigger design: one effect family plus its parameters.
-/// The Trigger Designer and the Composer's trigger track share it. It builds a
-/// validated `TriggerEffect` through the library's factories and derives a
-/// resistance/vibration curve over trigger travel for display only (the
-/// firmware's real force profile is not measured; see `curve`).
+/// An editable adaptive-trigger design: one effect family plus its parameters,
+/// flat so the parameter editor can bind to every field. The Trigger Designer
+/// and the Composer's trigger track share it. Everything else comes from the
+/// library: `spec` is the `TriggerEffectSpec`, `effect()` validates through
+/// it, `curve` is `TriggerCurve`, presets are `TriggerPreset`, code is
+/// `TactileCodeExport`.
 struct TriggerDesign: Codable, Hashable, Sendable {
     enum Family: String, Codable, CaseIterable, Identifiable, Sendable {
         case off, feedback, weapon, vibration, slope, zoneFeedback, zoneVibration, bow, galloping, machine
@@ -42,20 +43,7 @@ struct TriggerDesign: Codable, Hashable, Sendable {
 
     static let off = TriggerDesign(family: .off)
 
-    func effect() throws -> TriggerEffect {
-        switch family {
-        case .off: return .off
-        case .feedback: return try .feedback(position: start, strength: strength)
-        case .weapon: return try .weapon(start: start, end: end, strength: strength)
-        case .vibration: return try .vibration(position: start, amplitude: strength, frequency: frequency)
-        case .slope: return try .slopeFeedback(startPosition: start, endPosition: end, startStrength: strength, endStrength: secondStrength)
-        case .zoneFeedback: return try .multiplePositionFeedback(strengths: zones)
-        case .zoneVibration: return try .multiplePositionVibration(frequency: frequency, amplitudes: zones)
-        case .bow: return try .bow(start: start, end: end, strength: strength, snapForce: secondStrength)
-        case .galloping: return try .galloping(start: start, end: end, firstFoot: firstFoot, secondFoot: secondFoot, frequency: frequency)
-        case .machine: return try .machine(start: start, end: end, amplitudeA: strength, amplitudeB: secondStrength, frequency: frequency, period: period)
-        }
-    }
+    func effect() throws -> TriggerEffect { try spec.effect() }
 
     var validationMessage: String? {
         do { _ = try effect(); return nil } catch { return Self.describe(error) }
@@ -66,99 +54,72 @@ struct TriggerDesign: Codable, Hashable, Sendable {
         return (error as? any LocalizedError)?.errorDescription ?? String(describing: error)
     }
 
-    /// One sample of the displayed curve. `travel` runs 0…1 over the trigger's
-    /// pull; `force` and `vibration` are 0…1 of the parameter maximum.
-    struct CurvePoint: Identifiable, Hashable, Sendable {
-        var travel: Double
-        var force: Double
-        var vibration: Double
-        var id: Double { travel }
-    }
+    // MARK: Library spec
 
-    /// The curve the parameters describe, over ten zones of travel. This is a
-    /// reading of the parameters, not a measurement of the firmware's force.
-    func curve(samples: Int = 101) -> [CurvePoint] {
-        (0..<samples).map { i in
-            let travel = Double(i) / Double(samples - 1)
-            let zone = min(9.999, travel * 10)
-            let (f, v) = level(atZone: zone)
-            return CurvePoint(travel: travel, force: max(0, min(1, f)), vibration: max(0, min(1, v)))
-        }
-    }
-
-    private func level(atZone z: Double) -> (Double, Double) {
-        let s = Double(strength) / 8, s2 = Double(secondStrength) / 8
-        let zs = Double(start), ze = Double(end)
+    /// The library's description of this design (Tactile 0.4). Curves, presets
+    /// and code export all come from the spec.
+    var spec: TriggerEffectSpec {
         switch family {
-        case .off:
-            return (0, 0)
-        case .feedback:
-            return (z >= zs ? s : 0, 0)
-        case .weapon:
-            return (z >= zs && z < ze ? s : 0, 0)
-        case .vibration:
-            return (0, z >= zs && frequency > 0 ? s : 0)
-        case .slope:
-            guard z >= zs else { return (0, 0) }
-            let a = Double(strength) / 8, b = Double(secondStrength) / 8
-            let t = ze > zs ? min(1, (z - zs) / (ze - zs)) : 1
-            return (a + (b - a) * t, 0)
-        case .zoneFeedback:
-            return (Double(zones[safe: Int(z)] ?? 0) / 8, 0)
-        case .zoneVibration:
-            return (0, frequency > 0 ? Double(zones[safe: Int(z)] ?? 0) / 8 : 0)
-        case .bow:
-            guard z >= zs, z < ze + 1 else { return (0, 0) }
-            let t = ze > zs ? min(1, (z - zs) / (ze - zs)) : 1
-            // Resistance builds through the draw, then the snap force at the end zone.
-            return (z >= ze ? s2 : s * t, 0)
-        case .galloping:
-            return (0, z >= zs && z < ze && frequency > 0 ? 0.6 : 0)
-        case .machine:
-            guard z >= zs, z < ze, frequency > 0 else { return (0, 0) }
-            return (0, max(Double(strength), Double(secondStrength)) / 7)
+        case .off: .off
+        case .feedback: .feedback(position: start, strength: strength)
+        case .weapon: .weapon(start: start, end: end, strength: strength)
+        case .vibration: .vibration(position: start, amplitude: strength, frequency: frequency)
+        case .slope: .slopeFeedback(startPosition: start, endPosition: end, startStrength: strength, endStrength: secondStrength)
+        case .zoneFeedback: .multiplePositionFeedback(strengths: zones)
+        case .zoneVibration: .multiplePositionVibration(frequency: frequency, amplitudes: zones)
+        case .bow: .bow(start: start, end: end, strength: strength, snapForce: secondStrength)
+        case .galloping: .galloping(start: start, end: end, firstFoot: firstFoot, secondFoot: secondFoot, frequency: frequency)
+        case .machine: .machine(start: start, end: end, amplitudeA: strength, amplitudeB: secondStrength, frequency: frequency, period: period)
         }
     }
+
+    /// Resistance and vibration over travel, from the library's `TriggerCurve`
+    /// (a reading of the parameters, not a measurement of the motor).
+    var curve: TriggerCurve { spec.curve }
 
     // MARK: Presets
 
+    /// The library's presets with the symbols and wording the gallery shows.
     struct Preset: Identifiable, Sendable {
-        let id: String
-        let symbol: String
-        let detail: String
-        let design: TriggerDesign
+        let preset: TriggerPreset
+        var id: String { preset.displayName }
+        var design: TriggerDesign { TriggerDesign(spec: preset.spec) }
+        var symbol: String {
+            switch preset {
+            case .off: "circle.slash"
+            case .weaponTrigger: "scope"
+            case .bowDraw: "arrow.up.right"
+            case .brakePedal: "car.side"
+            case .clickDetent: "dial.medium"
+            case .machineGun: "burst"
+            case .gallop: "hare"
+            }
+        }
+        var detail: String {
+            switch preset {
+            case .off: "No resistance."
+            case .weaponTrigger: "Resistance that breaks partway down, like a trigger sear."
+            case .bowDraw: "Tension builds through the draw, then snaps back."
+            case .brakePedal: "A ramp from light to firm across the pull."
+            case .clickDetent: "A short, sharp notch halfway down."
+            case .machineGun: "Rapid vibration alternating between two strengths."
+            case .gallop: "Two taps per cycle, like hooves."
+            }
+        }
     }
 
-    static let presets: [Preset] = [
-        Preset(id: "Weapon trigger", symbol: "scope", detail: "Resistance that breaks at zone 5, like a trigger sear.",
-               design: TriggerDesign(family: .weapon, start: 2, end: 5, strength: 8)),
-        Preset(id: "Bow draw", symbol: "arrow.up.right", detail: "Tension builds through the draw, then snaps back.",
-               design: TriggerDesign(family: .bow, start: 1, end: 6, strength: 6, secondStrength: 8)),
-        Preset(id: "Brake", symbol: "car.side", detail: "A ramp from light to firm across the pull.",
-               design: TriggerDesign(family: .slope, start: 0, end: 9, strength: 1, secondStrength: 8)),
-        Preset(id: "Click / detent", symbol: "dial.medium", detail: "A single firm notch halfway down.",
-               design: TriggerDesign(family: .zoneFeedback, zones: [0, 0, 0, 0, 8, 0, 0, 0, 0, 0])),
-        Preset(id: "Machine gun", symbol: "burst", detail: "Rapid vibration alternating between two strengths.",
-               design: TriggerDesign(family: .machine, start: 2, end: 9, strength: 7, secondStrength: 2, frequency: 9, period: 1)),
-        Preset(id: "Off", symbol: "circle.slash", detail: "No resistance.", design: .off),
-    ]
+    /// Every `TriggerPreset`, with Off last.
+    static let presets: [Preset] = TriggerPreset.allCases.filter { $0 != .off }.map(Preset.init) + [Preset(preset: .off)]
+
+    /// The preset this design matches exactly, if any.
+    var matchingPreset: TriggerPreset? { TriggerPreset.allCases.first { $0.spec == spec } }
 
     // MARK: Code
 
-    /// A Swift expression building this effect through the Tactile factories.
-    var swiftExpression: String {
-        switch family {
-        case .off: ".off"
-        case .feedback: "try .feedback(position: \(start), strength: \(strength))"
-        case .weapon: "try .weapon(start: \(start), end: \(end), strength: \(strength))"
-        case .vibration: "try .vibration(position: \(start), amplitude: \(strength), frequency: \(frequency))"
-        case .slope: "try .slopeFeedback(startPosition: \(start), endPosition: \(end), startStrength: \(strength), endStrength: \(secondStrength))"
-        case .zoneFeedback: "try .multiplePositionFeedback(strengths: \(zones))"
-        case .zoneVibration: "try .multiplePositionVibration(frequency: \(frequency), amplitudes: \(zones))"
-        case .bow: "try .bow(start: \(start), end: \(end), strength: \(strength), snapForce: \(secondStrength))"
-        case .galloping: "try .galloping(start: \(start), end: \(end), firstFoot: \(firstFoot), secondFoot: \(secondFoot), frequency: \(frequency))"
-        case .machine: "try .machine(start: \(start), end: \(end), amplitudeA: \(strength), amplitudeB: \(secondStrength), frequency: \(frequency), period: \(period))"
-        }
+    /// Source for this design on `side` in `language` (Tactile 0.4 code export).
+    func code(side: TriggerSide, language: CodeLanguage) -> String {
+        if let preset = matchingPreset { return TactileCodeExport.trigger(preset, side: side, language: language) }
+        return TactileCodeExport.trigger(spec, side: side, language: language)
     }
 
     var summary: String {
@@ -167,6 +128,34 @@ struct TriggerDesign: Codable, Hashable, Sendable {
         case .zoneFeedback, .zoneVibration: "\(family.title) \(zones.map(String.init).joined(separator: ","))"
         default: "\(family.title) \(start)→\(end) · \(strength)"
         }
+    }
+}
+
+extension TriggerDesign {
+    /// The editable design for a library spec. Raw bytes have no editable
+    /// family: they are decoded back to a factory where the library can,
+    /// otherwise the design is off.
+    init(spec: TriggerEffectSpec) {
+        self.init()
+        switch spec {
+        case .off: family = .off
+        case let .feedback(p, s): family = .feedback; start = p; strength = s
+        case let .weapon(s, e, st): family = .weapon; start = s; end = e; strength = st
+        case let .vibration(p, a, f): family = .vibration; start = p; strength = a; frequency = f
+        case let .slopeFeedback(sp, ep, ss, es): family = .slope; start = sp; end = ep; strength = ss; secondStrength = es
+        case let .multiplePositionFeedback(s): family = .zoneFeedback; zones = Self.tenZones(s)
+        case let .multiplePositionVibration(f, a): family = .zoneVibration; frequency = f; zones = Self.tenZones(a)
+        case let .bow(s, e, st, sn): family = .bow; start = s; end = e; strength = st; secondStrength = sn
+        case let .galloping(s, e, f1, f2, f): family = .galloping; start = s; end = e; firstFoot = f1; secondFoot = f2; frequency = f
+        case let .machine(s, e, a, b, f, p): family = .machine; start = s; end = e; strength = a; secondStrength = b; frequency = f; period = p
+        case let .raw(bytes):
+            let decoded = TriggerEffectSpec(decoding: TriggerEffect(rawBytes: bytes))
+            if case .raw = decoded { family = .off } else { self = TriggerDesign(spec: decoded) }
+        }
+    }
+
+    private static func tenZones(_ values: [Int]) -> [Int] {
+        Array((values + Array(repeating: 0, count: 10)).prefix(10))
     }
 }
 

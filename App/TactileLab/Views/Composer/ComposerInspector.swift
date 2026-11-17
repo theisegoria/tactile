@@ -87,7 +87,7 @@ struct ComposerInspector: View {
             HStack {
                 Image(systemName: "waveform")
                 Text(clip.displayName).lineLimit(1).truncationMode(.middle)
-                if ComposerRenderer.decodedClip(clip.path) == nil {
+                if ComposerClips.length(clip.path) == nil {
                     LabTag(text: "File missing or unreadable", symbol: "exclamationmark.triangle")
                 }
                 Spacer()
@@ -136,12 +136,12 @@ struct ComposerInspector: View {
             Text("Fades from the previous key. Preview only until composition playback is wired; Apply at Playhead sends the colour now.")
                 .font(.caption).foregroundStyle(.secondary)
         case .unsupported(let type, _):
-            Text("This event's type “\(type)” comes from a newer version. It is kept when you save.").font(.callout).foregroundStyle(.secondary)
+            Text("This event's type “\(type)” comes from a newer version. The library pattern format cannot hold it, so Save leaves it out.").font(.callout).foregroundStyle(.secondary)
         }
     }
 
     private func clipLength(_ path: String) -> Double {
-        Double(ComposerRenderer.decodedClip(path)?.count ?? 0) / ComposerMix.sampleRate
+        ComposerClips.length(path) ?? 0
     }
 
     private func binding<T>(_ value: T, name: String, live: Bool = true, set: @escaping (inout ComposerEvent, T) -> Void) -> Binding<T> {

@@ -45,6 +45,8 @@ targets:
     dependencies:
       - package: Tactile
         product: Tactile
+      - package: Tactile
+        product: TactileSystemAudio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.tactile.lab

@@ -2,14 +2,15 @@ import SwiftUI
 import Tactile
 
 /// Haptic Composer: a timeline of actuator, trigger and lightbar events with
-/// an offline waveform preview, undo, `.tactilepattern` files and Swift export.
+/// an offline waveform preview, undo, `.tactilepattern` files (the library's
+/// `HapticPattern`) and Copy as Code in five languages.
 ///
-/// Play renders the actuator tracks (parametric, audio clips, emulated rumble)
-/// to a 3 kHz stereo WAV and sends it through the session's file-haptics
-/// operation, so simulation sends nothing and Stop All ends it. Trigger and
-/// lightbar tracks preview on screen during playback; "Apply at Playhead"
-/// sends their state at the playhead. Sending them on schedule during
-/// playback needs the `composition` command (ControllerOperations+Composer).
+/// The waveform is `HapticPatternRenderer.renderOffline` of the converted
+/// pattern. Play sends the pattern through the session (`LabCommand.pattern`,
+/// played by the library's pattern player: actuator audio streamed, trigger
+/// and lightbar changes on schedule), so simulation sends nothing and Stop
+/// All ends it. "Apply at Playhead" sends the trigger and lightbar state at
+/// the playhead.
 struct ComposerView: View {
     @Bindable var session: LabSession
     @State private var model = ComposerModel()
@@ -47,8 +48,8 @@ struct ComposerView: View {
         }
         .sheet(isPresented: $showCode) {
             CodeExportSheet(title: "Copy as Code — \(model.document.name)",
-                            code: ComposerExporters.all[0].code(for: model.document),
-                            planned: ComposerExporters.planned)
+                            code: { TactileCodeExport.pattern(path: model.codePath, language: $0) },
+                            note: model.fileURL == nil ? "The snippet loads the pattern file; save the pattern first and the path fills in." : "Loads \(model.codePath).")
         }
         .alert("Rename Pattern", isPresented: $renaming) {
             TextField("Name", text: $newName)
@@ -119,7 +120,7 @@ struct ComposerView: View {
                         Button("Play", systemImage: "play.fill") { play() }
                             .buttonStyle(.glassProminent)
                             .disabled(!session.canOperate || model.document.contentEnd <= 0)
-                            .help("Render the actuator tracks and play them on the selected controller")
+                            .help("Play the pattern on the selected controller")
                             .accessibilityIdentifier("composerPlay")
                     }
                     Button("Preview", systemImage: "eye") { model.startPlayhead(length: model.playLength) }
@@ -162,8 +163,8 @@ struct ComposerView: View {
     // MARK: Preview
 
     private var preview: some View {
-        let lightbar = ComposerRenderer.lightbar(in: model.document, at: model.playhead)
-        let triggers = ComposerRenderer.triggers(in: model.document, at: model.playhead)
+        let lightbar = model.document.lightbar(at: model.playhead)
+        let triggers = model.document.triggers(at: model.playhead)
         return LabCard(title: "At the Playhead", symbol: "eye") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -180,8 +181,12 @@ struct ComposerView: View {
                     Label("\(model.mix.clipped) samples clip at full scale; lower intensities or gain.", systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                Text(model.mix.isSilent ? "The actuator tracks are silent." : "Play sends the actuator mix (3 kHz, the waveform above). Felt result unverified on hardware.")
+                Text(model.mix.isSilent ? "The actuator tracks are silent." : "Play streams the waveform above (3 kHz) and sends trigger and lightbar changes on schedule. Felt result unverified on hardware.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                ForEach(model.notes, id: \.self) { note in
+                    Label(note, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .font(.callout)
         }
@@ -191,13 +196,14 @@ struct ComposerView: View {
 
     private func play() {
         run {
-            let plan = try model.playbackPlan()
-            let length = plan.length
+            let pattern = model.playbackPattern
+            let length = model.playLength
             // The session holds one test length for every operation; play for
             // the pattern's length, then put the user's setting back.
             let previous = session.duration
             session.duration = length
-            session.perform(.composition(plan), name: "Composer", settings: "pattern=\(model.document.name); length=\(String(format: "%.3f", length))s; actuator mix 3 kHz stereo WAV; \(plan.outputKeys.count) trigger/lightbar keys")
+            let events = pattern.tracks.filter { !$0.isMuted }.reduce(0) { $0 + $1.events.count }
+            session.perform(.pattern(pattern), name: "Composer", settings: "pattern=\(model.document.name); length=\(String(format: "%.3f", length))s; \(events) events; HapticPattern schema \(pattern.schemaVersion)")
             session.duration = previous
             if session.activeOperation == "Composer" { model.startPlayhead(length: length) }
         }
@@ -209,12 +215,12 @@ struct ComposerView: View {
     }
 
     private func applyAtPlayhead() {
-        let t = ComposerRenderer.triggers(in: model.document, at: model.playhead)
+        let t = model.document.triggers(at: model.playhead)
         do {
             var state = OutputState()
             state.leftTrigger = try (t.left ?? .off).effect()
             state.rightTrigger = try (t.right ?? .off).effect()
-            state.lightbar = ComposerRenderer.lightbar(in: model.document, at: model.playhead)?.color
+            state.lightbar = model.document.lightbar(at: model.playhead)?.color
             session.perform(.output(state), name: "Composer state at playhead",
                             settings: "t=\(String(format: "%.3f", model.playhead))s; L2=\(t.left?.summary ?? "off"); R2=\(t.right?.summary ?? "off")")
         } catch { session.showError(error) }
