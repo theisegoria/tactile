@@ -1,4 +1,5 @@
 import Foundation
+import Tactile
 
 /// Every analysis result the Input Lab shows, computed together.
 struct InputLabResults: Sendable, Hashable, Codable {
@@ -14,20 +15,23 @@ struct InputLabResults: Sendable, Hashable, Codable {
     /// from samples that happened to be near the centre.
     var driftFromRestWindow: Bool
 
-    static func compute(frames: [InputLabFrame], restLeft: [StickPoint], restRight: [StickPoint],
-                        reportTimes: [Double], analyzer: any InputLabAnalyzing) -> InputLabResults {
-        let left = frames.map(\.left), right = frames.map(\.right)
-        let fromWindow = !restLeft.isEmpty
-        let autoRest = { (points: [StickPoint]) in points.filter { $0.radius < 0.30 } }
+    /// Runs every analysis over `frames` through the library. `rest` holds the
+    /// samples of an explicit "measure rest" window (both sticks hands-off);
+    /// without one, drift uses the frames that happen to sit near the centre.
+    static func compute(frames: [InputLabFrame], rest: [InputRecording.Sample], reportTimes: [Double],
+                        analyzer: TactileInputAnalyzer = TactileInputAnalyzer()) -> InputLabResults {
+        let samples = frames.map(\.sample)
+        let fromWindow = !rest.isEmpty
+        let restSamples = fromWindow ? rest : samples
         return InputLabResults(
-            leftDrift: analyzer.drift(resting: fromWindow ? restLeft : autoRest(left)),
-            rightDrift: analyzer.drift(resting: fromWindow ? restRight : autoRest(right)),
-            leftCircularity: analyzer.circularity(left),
-            rightCircularity: analyzer.circularity(right),
-            l2: analyzer.triggerRange(frames.map(\.l2)),
-            r2: analyzer.triggerRange(frames.map(\.r2)),
+            leftDrift: analyzer.drift(restSamples, stick: .left, restWindow: fromWindow),
+            rightDrift: analyzer.drift(restSamples, stick: .right, restWindow: fromWindow),
+            leftCircularity: analyzer.circularity(samples, stick: .left),
+            rightCircularity: analyzer.circularity(samples, stick: .right),
+            l2: analyzer.triggerRange(samples, trigger: .left),
+            r2: analyzer.triggerRange(samples, trigger: .right),
             polling: analyzer.polling(reportTimes: reportTimes),
-            buttons: analyzer.buttonTimings(frames.map { ButtonSample(time: $0.t, buttons: $0.buttons) }, names: InputLabButtons.all),
+            buttons: analyzer.buttonTimings(samples, names: InputLabButtons.all),
             driftFromRestWindow: fromWindow)
     }
 }
@@ -66,7 +70,7 @@ struct InputLabHealthReport: Sendable, Codable {
         }
         for (name, circle) in [("Left stick", results.leftCircularity), ("Right stick", results.rightCircularity)] {
             if !circle.complete { notes.append("\(name) circularity incomplete (\(Self.percent(circle.coverage)) of the rim covered); rotate it slowly against the gate.") }
-            else if circle.averageErrorPercent > Threshold.circularityWarningPercent { notes.append("\(name) outline deviates \(Self.number(circle.averageErrorPercent, 1))% from a circle.") }
+            else if circle.errorPercent > Threshold.circularityWarningPercent { notes.append("\(name) outline deviates \(Self.number(circle.errorPercent, 1))% (RMS) from a circle.") }
         }
         for (name, range) in [("L2", results.l2), ("R2", results.r2)] where range.sampleCount > 0 && !range.fullTravel {
             notes.append("\(name) reached \(range.minimum)–\(range.maximum) of 0–255; press it fully and release to confirm full travel.")
@@ -112,7 +116,8 @@ struct InputLabHealthReport: Sendable, Codable {
         | Resting offset (max) | \(Self.percent(r.leftDrift.maxRadius)) | \(Self.percent(r.rightDrift.maxRadius)) |
         | Noise (σ) | \(Self.percent(r.leftDrift.noise)) | \(Self.percent(r.rightDrift.noise)) |
         | Recommended dead zone | \(Self.percent(r.leftDrift.recommendedDeadZone)) | \(Self.percent(r.rightDrift.recommendedDeadZone)) |
-        | Circularity error | \(Self.number(r.leftCircularity.averageErrorPercent, 1))% | \(Self.number(r.rightCircularity.averageErrorPercent, 1))% |
+        | Circularity error (RMS) | \(Self.number(r.leftCircularity.errorPercent, 1))% | \(Self.number(r.rightCircularity.errorPercent, 1))% |
+        | Outer radius (mean) | \(Self.percent(r.leftCircularity.meanOuterRadius)) | \(Self.percent(r.rightCircularity.meanOuterRadius)) |
         | Rim coverage | \(Self.percent(r.leftCircularity.coverage)) | \(Self.percent(r.rightCircularity.coverage)) |
 
         Drift measured from \(r.driftFromRestWindow ? "an explicit rest window" : "samples near the centre").
@@ -137,7 +142,7 @@ struct InputLabHealthReport: Sendable, Codable {
                 text += "| \(b.name) | \(b.presses) | \(Self.number(b.meanHoldMs, 0)) ms | \(Self.number(b.shortestHoldMs, 0)) ms | \(b.fastestRepeatMs.map { "\(Self.number($0, 0)) ms" } ?? "—") |\n"
             }
         }
-        text += "\nInput is sampled at the app's display rate (about 30 Hz); report intervals use per-report arrival times.\n"
+        text += "\nInput is sampled at the app's display rate (about 30 Hz); report intervals use per-report arrival times. Analysis by the Tactile library's InputAnalysis.\n"
         return text
     }
 

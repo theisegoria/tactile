@@ -13,7 +13,7 @@ struct TactileLabApp: App {
                 .labOnboarding(session: session)
                 .frame(minWidth: 860, minHeight: 660)
                 .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--dark") ? .dark : (ProcessInfo.processInfo.arguments.contains("--light") ? .light : nil))
-                .task { delegate.session = session; await session.start() }
+                .task { delegate.session = session; session.profiles = .shared; await session.start() }
                 .onChange(of: scenePhase) { _, phase in if phase == .active { session.refreshPermissions() } }
         }
         .keyboardShortcut("0", modifiers: .command)

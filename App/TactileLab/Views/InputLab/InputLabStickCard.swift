@@ -27,8 +27,8 @@ struct InputLabStickCard: View {
                         LabMetric(label: "Noise σ", value: InputLabHealthReport.percent(drift.noise))
                     }
                     GridRow {
-                        LabMetric(label: "Circularity error", value: circularity.coverage > 0 ? "\(InputLabHealthReport.number(circularity.averageErrorPercent, 1))%" : "—",
-                                  warning: circularity.complete && circularity.averageErrorPercent > InputLabHealthReport.Threshold.circularityWarningPercent)
+                        LabMetric(label: "Circularity error", value: circularity.coverage > 0 ? "\(InputLabHealthReport.number(circularity.errorPercent, 1))%" : "—",
+                                  warning: circularity.complete && circularity.errorPercent > InputLabHealthReport.Threshold.circularityWarningPercent)
                         LabMetric(label: "Rim covered", value: InputLabHealthReport.percent(circularity.coverage))
                         LabMetric(label: "Outer radius", value: circularity.coverage > 0 ? InputLabHealthReport.number(circularity.meanOuterRadius, 2) : "—")
                     }

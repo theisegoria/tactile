@@ -1,4 +1,4 @@
-# Tactile Lab
+# Tactile Lab 2.0
 
 A native SwiftUI workspace for exploring DualSense and DualSense Edge over Bluetooth. Requires Apple silicon and macOS 27. The underlying Tactile package still supports macOS 15 and both Mac architectures.
 
@@ -17,6 +17,8 @@ xcodebuild -project TactileLab.xcodeproj -scheme TactileLabUITests \
   -destination 'platform=macOS,arch=arm64' test
 ```
 
+The UI tests need macOS Automation Mode enabled and have not been run since the 2.0 redesign.
+
 ## Usage
 
 Pair a controller in Bluetooth settings, allow Input Monitoring, and select it. The app filters Bluetooth devices before opening them. Shared access is the default; applying Exclusive access performs an orderly reconnect. Connecting and reconnecting leave outputs neutral.
@@ -27,8 +29,13 @@ Pair a controller in Bluetooth settings, allow Input Monitoring, and select it. 
 - **Diagnostics:** firmware, report descriptor sizes, conflicts, GameController correlation, haptics metrics, filtered raw reports and read-only feature snapshots/comparisons.
 - **Players:** every connected controller as a numbered player for local multiplayer and split screen: live sticks, triggers and buttons per controller, identify, move between seats, held seats for disconnected controllers, optional player lights.
 - **Tests:** explicit output checks and human Pass/Fail/Skipped/Unverified observations, with local versioned JSON and Markdown export.
+- **Composer:** a timeline of parametric effects, audio clips, rumble, trigger and lightbar keys, saved as the library's `.tactilepattern` and played through `Controller.play(_:)`.
+- **Triggers:** a designer on `TriggerCurve` and `TriggerPreset`, with Copy as Code for Swift, C, Unity, Unreal and Godot.
+- **Input Lab:** stick drift and suggested dead zone, circularity, trigger travel, button timing and report-interval statistics, computed by the library's `InputAnalysis`. Record, replay and export a controller health report; recordings save as Input Lab JSON and can be exported as or loaded from `.tactileinput` (`InputRecording`).
+- **Profiles:** lightbar, player LEDs, triggers and haptic gain per game or player, stored as one `.tactileprofile` per profile through the library's `ProfileStore` (app-only scope and mute LED in `lab-profiles.json`). The active profile's haptic gain is the master gain for every haptic the Lab sends. A 1.x `profiles.json` is migrated on first launch and kept as `profiles.json.migrated`.
+- **Menu bar and onboarding:** a menu bar item for status, Stop All and the active profile; a first-run sheet.
 
-Command-1 through Command-6 switch tabs (Players is Command-6). The test length in the header applies to every output test. Command-period stops app-owned effects. Command-Shift-R retries the connection, Command-Shift-E exports a report, and Command-0 opens the main window.
+Command-1 through Command-9 switch to the first nine sections (Players is Command-6; Composer, Triggers and Input Lab are Command-7 to Command-9; Profiles has no shortcut). The test length in the header applies to every output test. Command-period stops app-owned effects. Command-Shift-R retries the connection, Command-Shift-E exports a report, and Command-0 opens the main window.
 
 Output tests default to three seconds and accept 0.1–60 seconds. Stop All, device changes, disconnect and quit cancel pending operations before requesting neutral outputs. Quit has an independent three-second completion deadline. Raw history, snapshots and receipt history are bounded; visual input updates are limited to approximately 30 Hz. Audio conversion, raw parsing and diagnostics collection run away from the main actor.
 
@@ -48,4 +55,4 @@ Original Image Gen sources and exact prompts are retained in `Artwork/`. The con
 
 Run `scripts/configure-notarization.command` in Terminal to configure the `tactile` Keychain profile. Enter credentials only into the local notarytool prompts; never put them in source or chat. After setup, run `./scripts/release-lab.sh --from-archive '/absolute/path/to/Tactile Lab.xcarchive'` or run the script without arguments to rebuild. It submits to Apple, checks Accepted results, staples and validates the app and DMG, performs Gatekeeper assessments, and only then populates `dist/TactileLab` with ZIP, DMG, checksums, installation notes and verification records. No public upload is performed.
 
-Hardware acceptance is deferred at the owner's request. A software pass, decoded packet or successful HID transmission never automatically establishes a felt or heard response. See the current receipt and hardware checklist in `docs/receipts/`.
+Nothing in Tactile Lab 2.0 has been checked against a controller: trigger feel, pattern playback, profile output and haptic gain, Input Lab readings from real reports and system-audio capture are all unverified. Hardware acceptance is deferred at the owner's request. A software pass, decoded packet or successful HID transmission never automatically establishes a felt or heard response. See the current receipt and hardware checklist in `docs/receipts/`.

@@ -47,12 +47,12 @@ struct ProfileEditorSheet: View {
                 Section {
                     LabeledContent("Haptic gain") {
                         HStack {
-                            Slider(value: $profile.hapticGain, in: 0...4).accessibilityLabel("Haptic gain")
+                            Slider(value: $profile.hapticGain, in: 0...1).accessibilityLabel("Haptic gain")
                             Text(profile.hapticGain, format: .number.precision(.fractionLength(2))).monospacedDigit().frame(minWidth: 36, alignment: .trailing)
                         }
                     }
                 } header: { Text("Haptics") } footer: {
-                    Text("Gain for audio-driven haptics; 1.00 is unity.").font(.caption).foregroundStyle(.secondary)
+                    Text("Master gain for every haptic the Lab sends while this profile is active; 1.00 is full strength.").font(.caption).foregroundStyle(.secondary)
                 }
                 if !profile.problems.isEmpty {
                     Section {

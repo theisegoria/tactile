@@ -17,7 +17,8 @@ standard input; Tactile talks to the controller's HID protocol directly for the 
 *Tactile Lab, the companion macOS app (`App/`), shown in its simulation mode: no
 controller was connected for these captures.*
 
-> Status: 0.3.0, pre-release. All software gates (0–4) are built and unit-tested, but
+> Status: 0.4.0 in preparation (0.3.0 is the last release candidate). All software
+> gates (0–4) are built and unit-tested, but
 > **nothing has been verified on a controller yet** — see `docs/receipts/` and the
 > status column in `PROTOCOL.md`.
 
@@ -42,6 +43,7 @@ controller was connected for these captures.*
 | `TactileTransport` | CoreHID discovery, report I/O, reconnects, shared/exclusive modes, permission checks. |
 | `TactileHaptics` | Float PCM → 3 kHz 8-bit stereo, real-time 10.67 ms report pump, audio-tap and parametric sources. |
 | `TactileBridge` | Pairs HID devices with `GCController`s by Bluetooth MAC address. |
+| `TactileSystemAudio` | System audio (or one app) to haptics via ScreenCaptureKit; needs Screen Recording. |
 | `TactileAudio` | **Experimental.** Speaker/headphone audio (Opus, report 0x36) and microphone uplink research, via the system Opus codec. |
 | `Tactile` | High-level `Controller` facade. |
 | `CTactile` | C ABI (`include/tactile.h`) for engines and non-Swift hosts. |
@@ -50,9 +52,11 @@ controller was connected for these captures.*
 ## Quick start
 
 For a native graphical tester, open **[Tactile Lab](App/README.md)** with
-`./scripts/run-lab.sh` or `TactileLab.xcodeproj`. The app requires Apple silicon
-and macOS 27, provides five testing tabs and local session exports, and includes
-a visibly labeled simulation for use without hardware. Physical Bluetooth
+`./scripts/run-lab.sh` or `TactileLab.xcodeproj`. Tactile Lab 2.0 requires Apple
+silicon and macOS 27. Besides the input, effects, audio, diagnostics, tests and
+players screens it has a haptic pattern Composer, a Trigger Designer, an Input Lab
+(on `InputAnalysis`) and Profiles (on `ProfileStore`), with local session exports
+and a visibly labeled simulation for use without hardware. Physical Bluetooth
 acceptance remains deferred; see the [October audit](docs/receipts/audit-2026-10-18.md).
 
 ```swift
@@ -108,6 +112,12 @@ volume (`tactile_controller_set_audio`), capability bits and USB identity in
 `tactile_controller_info`, the headset state in `tactile_input_state`, and
 latency estimates in the haptics and speaker stats. Every new path rests on
 unverified protocol facts; `capabilities_unverified` says so at run time.
+
+C ABI 0.4 (additive) adds named trigger presets (`tactile_trigger_from_preset`),
+haptic patterns (`tactile_pattern_load_file/load_json/render/play/stop/is_playing`,
+`.tactilepattern`) and profiles (`tactile_profile_apply_file/json`,
+`.tactileprofile`). The Python binding's tests cover them without hardware; the
+Unity, Unreal and Godot wrappers were not compiled. None of it has run on a controller.
 
 ## Documentation
 

@@ -41,3 +41,13 @@ another one is connected, it switches to that one (emitting
 
 The node polls in `_process`, so signals and state are main-thread only; output
 calls never block. Not compiled by the author (no godot-cpp checkout in CI).
+
+## C ABI 0.4
+
+| C function | `TactilePad` |
+|---|---|
+| `tactile_trigger_from_preset` | `trigger_preset(preset)` |
+| `tactile_pattern_load_file` / `_play` / `_stop` / `_is_playing` | `play_pattern_file(path)` (keeps the last pattern), `stop_pattern()`, `is_pattern_playing()` |
+| `tactile_profile_apply_file` | `apply_profile_file(path)` |
+
+Paths may be `res://` or `user://`. Not compiled; none of it has run on a controller.

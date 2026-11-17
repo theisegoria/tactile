@@ -13,3 +13,14 @@ Ticked on the game thread; output calls never block. The subsystem follows
 whichever DualSense is reporting: if its controller goes away and another one is
 connected, it switches to that one. Not compiled by the author
 (no Unreal install available).
+
+## C ABI 0.4
+
+| C function | `UTactileSubsystem` |
+|---|---|
+| `tactile_trigger_from_preset` | `TriggerPreset(ETactileTriggerPreset)` |
+| `tactile_pattern_load_file` / `_play` / `_stop` / `_is_playing` | `PlayPatternFile(Path)` (cached per path), `StopPattern()`, `IsPatternPlaying()` |
+| `tactile_profile_apply_file` | `ApplyProfileFile(Path)` |
+
+Relative paths resolve against the project's Content directory. Not compiled;
+none of it has run on a controller.

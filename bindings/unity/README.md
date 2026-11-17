@@ -11,3 +11,14 @@ import the Demo sample.
   rate-limits and coalesces).
 - Untested in Unity by the author (no Unity install); compile errors or runtime
   issues should be reported.
+
+## C ABI 0.4
+
+| C function | C# |
+|---|---|
+| `tactile_trigger_from_preset` | `TriggerEffect.Preset(TriggerPreset)` |
+| `tactile_pattern_load_file` / `_free` | `TactilePattern.Load(path)`, `Dispose()` |
+| `tactile_pattern_play` / `_stop` / `_is_playing` | `controller.PlayPattern(p)`, `StopPattern()`, `IsPatternPlaying` |
+| `tactile_profile_apply_file` / `_json` | `controller.ApplyProfile(path)`, `ApplyProfileJson(json)` |
+
+Not compiled, like the rest of this package; none of it has run on a controller.

@@ -49,6 +49,40 @@ system-audio haptics are UNVERIFIED on hardware; the tests are hardware-free.
 - `tactile_profile_apply_file/json`.
 - Bindings: Python (tested), Unity, Unreal and Godot (not compiled here).
 
+### Added — Tactile Lab 2.0 (app version 2.0.0, build 3)
+Checked by unit tests in simulation only; nothing below has run against a
+controller, and the redesigned screens have not been re-checked in the running app
+since these changes.
+- New sections: **Composer** (timeline editor saving `HapticPattern`, played
+  through `Controller.play(_:)`), **Triggers** (designer on `TriggerCurve` and
+  `TriggerPreset`, Copy as Code in all five languages), **Input Lab** and
+  **Profiles**. ⌘7–⌘9 open Composer, Triggers and Input Lab.
+- Speaker & Audio redesign with a capabilities card and stream stats; Effects,
+  Diagnostics and Tests as glass cards; a system-audio-to-haptics card on Effects
+  (`TactileSystemAudio`, needs Screen Recording); a menu bar item; first-run
+  onboarding.
+- Input Lab runs on the library's `InputAnalysis` (drift and dead zone,
+  circularity, trigger travel, button timing, `IntervalStatistics`) instead of
+  the app's own analyzer, which is removed. Recordings still save as Input Lab
+  JSON (frames plus per-report times) and can also be exported as, or loaded
+  from, `.tactileinput` (`InputRecording`; report times are not part of that format).
+- Profiles are stored through the library's `ProfileStore`: one `.tactileprofile`
+  file per profile, readable by `ControllerProfile`, the C ABI and the bindings.
+  Scope, mute LED, order and the active profile live in `lab-profiles.json` beside
+  them. Profiles can be imported from and exported as `.tactileprofile`.
+- The active profile's haptic gain is applied: it sets the haptics mixer's master
+  gain for every haptic the Lab sends (effects, audio files, microphone, patterns,
+  system audio), and the receipt records it.
+
+### Changed — Tactile Lab 2.0
+- Circularity error is now the library's shape error (RMS deviation of the outline
+  from its own mean radius); short travel shows as the mean outer radius instead.
+  Polling percentiles are nearest-rank; the dead-zone suggestion follows
+  `InputAnalysis.recommendedDeadZone`.
+- Profile haptic gain is a 0–1 master gain (was a stored, unused 0–4 value).
+- A Tactile Lab 1.x `profiles.json` is migrated on first launch (gains above 1
+  become 1) and renamed `profiles.json.migrated`; it is not deleted.
+
 ## [0.3.0] — 2026-11-09 (release candidate)
 
 ### Added — C ABI 0.3 (additive; 0.2 callers keep working)

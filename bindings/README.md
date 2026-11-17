@@ -10,3 +10,6 @@ a weapon effect on R2, left stick → lightbar.
 | Unity (P/Invoke, UPM) | `unity/com.tactile.dualsense/` | ❌ not compiled (no Unity/.NET toolchain) |
 | Godot 4 (GDExtension) | `godot/` | ❌ not compiled (needs godot-cpp) |
 | Unreal (plugin module) | `unreal/TactileUE/` | ❌ not compiled (no Unreal) |
+
+All four cover C ABI 0.4 (trigger presets, `.tactilepattern` playback and
+`.tactileprofile` application); each README maps the new C functions to its API.
