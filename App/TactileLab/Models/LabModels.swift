@@ -160,6 +160,17 @@ enum LabCommand: Sendable {
     case sharedSpeaker(URL, Float, AudioSettings, SpeakerAudioFraming.Destination)
 }
 
+extension LabCommand {
+    /// True for commands that drive the actuators through the haptics mixer,
+    /// so the active profile's master gain applies to them.
+    var sendsHaptics: Bool {
+        switch self {
+        case .haptic, .hapticFile, .hostMicrophone, .pattern, .systemAudio: true
+        case .output, .speaker, .scan, .record, .sharedSpeaker: false
+        }
+    }
+}
+
 struct OperationResult: Sendable {
     var summary: String
     var candidates: [UplinkCandidate] = []

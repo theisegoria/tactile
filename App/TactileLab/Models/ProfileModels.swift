@@ -1,9 +1,8 @@
 import Foundation
 import Tactile
 
-/// Who a profile is for. Named `LabProfile*` so it does not clash with the
-/// Tactile library's forthcoming `ControllerProfile`; convert in one adapter
-/// once that type exists.
+/// Who a profile is for. App-side metadata: the library's `ControllerProfile`
+/// has no scope, so it lives in `LabProfileExtras`.
 enum LabProfileScope: Sendable, Hashable, Codable {
     case general
     case game(String)
@@ -72,6 +71,18 @@ struct LabProfileTrigger: Sendable, Hashable, Codable {
         }
     }
 
+    /// The library's description of this setting. Out-of-range parameters
+    /// are carried as they are; `TriggerEffectSpec.effect()` rejects them.
+    var spec: TriggerEffectSpec {
+        switch kind {
+        case .off: .off
+        case .feedback: .feedback(position: a, strength: b)
+        case .weapon: .weapon(start: a, end: b, strength: c)
+        case .vibration: .vibration(position: a, amplitude: b, frequency: c)
+        case .raw: .raw(bytes: rawBytes ?? [TriggerEffect.Mode.off.rawValue])
+        }
+    }
+
     /// Sensible defaults when the editor switches kind.
     static func defaults(for kind: Kind) -> LabProfileTrigger {
         switch kind {
@@ -84,9 +95,32 @@ struct LabProfileTrigger: Sendable, Hashable, Codable {
     }
 }
 
+extension LabProfileTrigger {
+    /// The editor form of a library spec. Kinds the editor has no controls
+    /// for (bow, galloping, machine, multi-position, slope) keep their wire
+    /// bytes as `.raw`, so nothing is lost; nil when the spec is invalid.
+    init?(spec: TriggerEffectSpec) {
+        switch spec {
+        case .off: self = .off
+        case let .feedback(position, strength): self.init(kind: .feedback, a: position, b: strength, c: 0)
+        case let .weapon(start, end, strength): self.init(kind: .weapon, a: start, b: end, c: strength)
+        case let .vibration(position, amplitude, frequency): self.init(kind: .vibration, a: position, b: amplitude, c: frequency)
+        case let .raw(bytes): self.init(kind: .raw, a: 0, b: 0, c: 0, rawBytes: bytes)
+        default:
+            guard let effect = try? spec.effect() else { return nil }
+            self.init(kind: .raw, a: 0, b: 0, c: 0, rawBytes: effect.bytes)
+        }
+    }
+}
+
 /// A named set of controller outputs: lightbar, player LEDs, triggers and haptic gain.
+///
+/// The editing form of the library's `ControllerProfile` (which is what is
+/// stored, one `.tactileprofile` file per profile) plus the app-only fields in
+/// `LabProfileExtras`: scope, mute LED and timestamps.
 struct LabProfile: Sendable, Hashable, Codable, Identifiable {
-    var id = UUID()
+    /// The library profile id (a UUID string for profiles made here).
+    var id = UUID().uuidString
     var name: String
     var scope: LabProfileScope = .general
     var lightbar = LightbarColor(red: 0, green: 120, blue: 255)
@@ -96,7 +130,8 @@ struct LabProfile: Sendable, Hashable, Codable, Identifiable {
     var muteLED = MuteLED.off
     var leftTrigger = LabProfileTrigger.off
     var rightTrigger = LabProfileTrigger.off
-    /// Gain for audio-driven haptics, 0–4 (1 is unity).
+    /// Haptics master gain, 0–1 (`ControllerProfile.hapticGain`). While the
+    /// profile is active it scales every haptic the Lab sends.
     var hapticGain = 1.0
     var createdAt = Date()
     var modifiedAt = Date()
@@ -118,8 +153,44 @@ struct LabProfile: Sendable, Hashable, Codable, Identifiable {
         if leftTrigger.effect == nil { list.append("L2 settings are out of range.") }
         if rightTrigger.effect == nil { list.append("R2 settings are out of range.") }
         if !(0...5).contains(playerLEDs) { list.append("Player LEDs must be 0–5.") }
-        if !hapticGain.isFinite || !(0...4).contains(hapticGain) { list.append("Haptic gain must be 0–4.") }
+        if !hapticGain.isFinite || !(0...1).contains(hapticGain) { list.append("Haptic gain must be 0–1.") }
         return list
+    }
+}
+
+/// The app-only fields of a profile, kept beside the library files in
+/// `lab-profiles.json` (the library format has no place for them).
+struct LabProfileExtras: Sendable, Hashable, Codable {
+    var scope: LabProfileScope = .general
+    var muteLED = MuteLED.off
+    var createdAt = Date()
+    var modifiedAt = Date()
+}
+
+extension LabProfile {
+    /// The library profile that is stored and applied.
+    var controllerProfile: ControllerProfile {
+        ControllerProfile(id: id, name: name, lightbar: lightbar, playerLEDs: .player(playerLEDs), playerLEDBrightness: brightness,
+                          leftTrigger: leftTrigger.spec, rightTrigger: rightTrigger.spec, hapticGain: Float(hapticGain))
+    }
+
+    var extras: LabProfileExtras { LabProfileExtras(scope: scope, muteLED: muteLED, createdAt: createdAt, modifiedAt: modifiedAt) }
+
+    /// The editing form of a library profile. Fields the library leaves nil
+    /// (meaning "leave as is") take the Lab's defaults, since a Lab profile
+    /// always sets every output; the gain is clamped to 0–1.
+    init(_ profile: ControllerProfile, extras: LabProfileExtras? = nil) {
+        self.init(name: profile.name)
+        id = profile.id
+        if let lightbar = profile.lightbar { self.lightbar = lightbar }
+        if let leds = profile.playerLEDs { playerLEDs = (0...5).first { PlayerLEDs.player($0) == leds.subtracting(.instant) } ?? 1 }
+        if let brightness = profile.playerLEDBrightness { self.brightness = brightness }
+        leftTrigger = profile.leftTrigger.flatMap(LabProfileTrigger.init(spec:)) ?? .off
+        rightTrigger = profile.rightTrigger.flatMap(LabProfileTrigger.init(spec:)) ?? .off
+        hapticGain = Double(profile.clampedGain)
+        if let extras {
+            scope = extras.scope; muteLED = extras.muteLED; createdAt = extras.createdAt; modifiedAt = extras.modifiedAt
+        }
     }
 }
 

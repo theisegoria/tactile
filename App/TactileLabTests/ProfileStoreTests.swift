@@ -15,7 +15,7 @@ import Tactile
         profile.playerLEDs = 3
         profile.leftTrigger = .defaults(for: .feedback)
         profile.rightTrigger = .defaults(for: .weapon)
-        profile.hapticGain = 1.5
+        profile.hapticGain = 0.5
         return profile
     }
 
@@ -116,6 +116,112 @@ import Tactile
         profile.rightTrigger = LabProfileTrigger(kind: .weapon, a: 7, b: 3, c: 4)  // end before start
         #expect(profile.rightTrigger.effect == nil)
         #expect(!profile.problems.isEmpty)
+    }
+
+    @Test func profilesAreStoredAsLibraryFiles() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LabProfileStore(directory: directory)
+        let added = store.add(sample("Library"))
+        let stored = try #require(try ProfileStore(directory: directory).load(id: added.id))
+        #expect(stored.name == "Library")
+        #expect(stored.lightbar == LightbarColor(red: 255, green: 64, blue: 0))
+        #expect(stored.playerLEDs == .player(3))
+        #expect(stored.leftTrigger == .feedback(position: 3, strength: 4))
+        #expect(stored.rightTrigger == .weapon(start: 3, end: 6, strength: 6))
+        #expect(stored.hapticGain == 0.5)
+        #expect(try stored.outputState().lightbar == added.outputState.lightbar)
+        // Lab-only fields live in the metadata file and survive a reload.
+        #expect(FileManager.default.fileExists(atPath: store.metadataURL.path))
+        #expect(LabProfileStore(directory: directory).profiles.first?.scope == .game("Astro Bot"))
+        store.delete([added.id])
+        #expect(try ProfileStore(directory: directory).list().isEmpty)
+    }
+
+    @Test func profileWrittenByAnotherToolIsListed() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bow = TriggerEffectSpec.bow(start: 2, end: 6, strength: 5, snapForce: 4)
+        try ProfileStore(directory: directory).save(ControllerProfile(id: "external-1", name: "External", rightTrigger: bow, hapticGain: 0.25))
+        let store = LabProfileStore(directory: directory)
+        let profile = try #require(store.profiles.first)
+        #expect(profile.id == "external-1")
+        #expect(profile.scope == .general)
+        #expect(profile.hapticGain == 0.25)
+        // A kind the editor has no controls for keeps its exact wire bytes.
+        #expect(profile.rightTrigger.kind == .raw)
+        #expect(profile.rightTrigger.effect == (try bow.effect()))
+    }
+
+    @Test func legacyArchiveIsMigratedOnce() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var loud = sample("Loud"); loud.hapticGain = 2.5  // 1.x allowed 0–4
+        var quiet = sample("Quiet"); quiet.hapticGain = 0.3; quiet.scope = .player(2); quiet.muteLED = .on
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let legacy = directory.appendingPathComponent(LabProfileStore.legacyFileName)
+        try encoder.encode(LabProfileStore.Archive(activeID: quiet.id, profiles: [loud, quiet])).write(to: legacy)
+
+        let store = LabProfileStore(directory: directory)
+        #expect(store.lastError == nil)
+        #expect(store.profiles.map(\.name) == ["Loud", "Quiet"])
+        #expect(store.profiles[0].hapticGain == 1)
+        #expect(abs(store.profiles[1].hapticGain - 0.3) < 1e-6)  // stored as Float
+        #expect(store.profiles[1].scope == .player(2))
+        #expect(store.profiles[1].muteLED == .on)
+        #expect(store.activeID == quiet.id)
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+        #expect(FileManager.default.fileExists(atPath: legacy.path + ".migrated"))
+        #expect(try ProfileStore(directory: directory).list().count == 2)
+        #expect(LabProfileStore(directory: directory).profiles.count == 2)
+    }
+
+    @Test func importAcceptsALibraryProfile() throws {
+        let store = LabProfileStore(directory: temporaryDirectory())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let data = try ControllerProfile(name: "From C", lightbar: LightbarColor(red: 1, green: 2, blue: 3), hapticGain: 0.75).encoded()
+        let imported = try store.importProfiles(from: data)
+        #expect(imported.first?.name == "From C")
+        #expect(imported.first?.hapticGain == 0.75)
+        #expect(imported.first?.lightbar == LightbarColor(red: 1, green: 2, blue: 3))
+    }
+
+    @Test func activeProfileGainIsSentWithHaptics() async {
+        let session = LabSession(simulated: true, scenario: "connected")
+        await session.start()
+        for _ in 0..<200 where !session.canOperate { try? await Task.sleep(for: .milliseconds(5)) }
+        let store = LabProfileStore(directory: temporaryDirectory())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        #expect(session.hapticGain == 1)
+        session.duration = 0.1
+        store.apply(store.add(sample("Half")), to: session)
+        #expect(session.profiles === store)
+        #expect(session.hapticGain == 0.5)
+        session.perform(.haptic(.click(), .both), name: "Click", settings: "click")
+        #expect(session.operations.last?.requestedSettings.contains("haptic gain=0.50") == true)
+        session.perform(.output(OutputState(lightbar: LightbarColor(red: 1, green: 1, blue: 1))), name: "Light", settings: "light")
+        #expect(session.operations.last?.requestedSettings.contains("haptic gain") == false)
+        store.setActive(nil)
+        #expect(session.hapticGain == 1)
+        await session.shutdown()
+    }
+
+    @Test func hapticGainScalesTheMixerOutput() {
+        func peak(gain: Float) -> Int {
+            let mixer = HapticsMixer()
+            ControllerOperations.applyHapticGain(gain, to: mixer)
+            mixer.play(.tone(intensity: 0.5, frequency: 200, duration: 1))
+            var out: [Int8] = []
+            var highest = 0
+            for _ in 0..<20 { _ = mixer.render(into: &out); highest = max(highest, out.map { abs(Int($0)) }.max() ?? 0) }
+            return highest
+        }
+        let full = peak(gain: 1), half = peak(gain: 0.5)
+        #expect(full > 20)
+        #expect(abs(Double(half) / Double(full) - 0.5) < 0.1)
+        #expect(peak(gain: 0) <= 1)
+        #expect(peak(gain: 3) == full)  // clamped to 1
     }
 
     @Test func applyInSimulationRecordsAnOperationAndMarksActive() async {

@@ -99,6 +99,7 @@
 		503741E72C65CE510C91BE4F /* AudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioView.swift; sourceTree = "<group>"; };
 		53143E7A746078E3F8B3BC5A /* ProfileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileModels.swift; sourceTree = "<group>"; };
 		53BCE0AF6AECE0CA3BD003E1 /* SystemAudioHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioHaptics.swift; sourceTree = "<group>"; };
+		5B2344ACD93B5C02BD183905 /* lab-library */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "lab-library"; path = .; sourceTree = SOURCE_ROOT; };
 		5EB522B399DB32CF8F1A0F58 /* InputLabStickCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputLabStickCard.swift; sourceTree = "<group>"; };
 		6039D590346F13651816B4B5 /* LabCardParts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabCardParts.swift; sourceTree = "<group>"; };
 		69D9259E306C4360EE0F4857 /* LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabModels.swift; sourceTree = "<group>"; };
@@ -133,7 +134,6 @@
 		D579B3A6E69086CFFD7D7B44 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		D97BF6B1BCAB08D2FBD5016E /* TactileLabUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileLabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E076393BB9A133CE23F81299 /* TriggerParameterEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerParameterEditor.swift; sourceTree = "<group>"; };
-		E1DE8A37C9A2DA44BA70A801 /* DualSense Adaptor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "DualSense Adaptor"; path = .; sourceTree = SOURCE_ROOT; };
 		E2590748E86C9DA795EB077D /* LabSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabSession.swift; sourceTree = "<group>"; };
 		E699339808F0D3DC98CC058D /* ComposerTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTimeline.swift; sourceTree = "<group>"; };
 		E97B3CB0543655BEABBF367E /* TactileLab.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TactileLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -299,7 +299,7 @@
 		D28A4E72E030F1D317FF3F9C /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				E1DE8A37C9A2DA44BA70A801 /* DualSense Adaptor */,
+				5B2344ACD93B5C02BD183905 /* lab-library */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -730,7 +730,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
 				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Support/Info.plist;
@@ -738,7 +738,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab;
 				PRODUCT_NAME = "Tactile Lab";
 				SDKROOT = macosx;
@@ -768,7 +768,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
 				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Support/Info.plist;
@@ -776,7 +776,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab.testing;
 				PRODUCT_NAME = "Tactile Lab";
 				SDKROOT = macosx;
@@ -920,7 +920,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TactileLab;
 				CODE_SIGN_ENTITLEMENTS = App/Support/TactileLab.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Support/Info.plist;
@@ -928,7 +928,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.tactile.lab;
 				PRODUCT_NAME = "Tactile Lab";
 				SDKROOT = macosx;

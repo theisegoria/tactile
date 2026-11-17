@@ -26,11 +26,26 @@ struct InputLabFrame: Sendable, Hashable, Codable {
     var left: StickPoint { StickPoint(raw: leftStick) }
     var right: StickPoint { StickPoint(raw: rightStick) }
     var pressed: Buttons { Buttons(rawValue: buttons) }
+
+    /// The frame as the library's input state (sticks, triggers, buttons, battery).
+    var state: InputState {
+        var state = InputState(kind: .bluetoothFull)
+        state.leftStick = leftStick; state.rightStick = rightStick
+        state.l2 = l2; state.r2 = r2
+        state.buttons = pressed
+        if let battery {
+            state.battery = BatteryStatus(percent: battery, charging: charging.flatMap(BatteryStatus.Charging.init(rawValue:)) ?? .unknown)
+        }
+        return state
+    }
+
+    /// The frame as one `InputRecording.Sample`, the unit `InputAnalysis` works on.
+    var sample: InputRecording.Sample { InputRecording.Sample(time: t, state: state) }
 }
 
-/// A saved Input Lab session. Named `InputLabRecording` so it does not clash
-/// with the Tactile library's forthcoming `InputRecording`; convert between
-/// the two in one adapter once that type exists.
+/// A saved Input Lab session (`.json`). It keeps display-rate frames and
+/// per-report arrival times apart, which the library's `InputRecording`
+/// (`.tactileinput`) does not; the two convert both ways below.
 struct InputLabRecording: Sendable, Hashable, Codable {
     static let currentSchema = 1
     var schemaVersion = InputLabRecording.currentSchema
@@ -62,7 +77,24 @@ struct InputLabRecording: Sendable, Hashable, Codable {
     }
 }
 
+extension InputLabRecording {
+    /// Imports a library recording. Each library sample is one input report,
+    /// so its times double as the report arrival times.
+    init(_ recording: InputRecording, simulated: Bool = false) {
+        let t0 = recording.samples.first?.time ?? 0
+        let frames = recording.samples.map { InputLabFrame($0.state, t: $0.time - t0) }
+        self.init(createdAt: recording.createdAt, deviceName: recording.device.isEmpty ? "Imported recording" : recording.device,
+                  model: "DualSense", simulated: simulated, frames: frames, reportTimes: frames.map(\.t))
+    }
+
+    /// The frames as a library recording. Report arrival times are not part
+    /// of `InputRecording`, so polling statistics do not survive the export.
+    var libraryRecording: InputRecording {
+        InputRecording(device: deviceName, createdAt: createdAt, samples: frames.map(\.sample))
+    }
+}
+
 /// The named buttons the timing table reports, as (name, mask) pairs.
 enum InputLabButtons {
-    static let all: [(String, UInt32)] = ButtonName.all.map { ($0.name, $0.value.rawValue) }
+    static let all: [(String, Buttons)] = ButtonName.all.map { ($0.name, $0.value) }
 }

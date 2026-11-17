@@ -31,7 +31,7 @@ struct ProfilesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 LabPageHeader(title: "Profiles",
-                              subtitle: "Save lights, triggers and haptic gain per game or per player. Applying a profile runs for the test length, then outputs return to neutral.") {
+                              subtitle: "Save lights, triggers and haptic gain per game or per player. Lights and triggers run for the test length; the active profile's haptic gain scales every haptic the Lab sends.") {
                     GlassEffectContainer(spacing: 8) {
                         HStack(spacing: 8) {
                             Button("New Profile", systemImage: "plus") { editing = EditRequest(profile: LabProfile(name: store.uniqueName("New profile")), isNew: true) }
@@ -138,6 +138,8 @@ struct ProfilesView: View {
                     Button("Rename…") { newName = profile.name; renaming = profile }
                     Button("Duplicate") { store.duplicate(profile.id) }
                     Button("Export…") { export([profile.id], suggested: "\(profile.name).json") }
+                    Button("Export as .tactileprofile…") { exportLibrary(profile) }
+                        .help("The library's ControllerProfile format, for the C ABI, the bindings or another app. Scope and mute LED are Lab-only and not included.")
                     Divider()
                     Button(active ? "Clear Active" : "Mark Active") { store.setActive(active ? nil : profile.id) }
                     Divider()
@@ -173,20 +175,30 @@ struct ProfilesView: View {
 
     private func importProfiles() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [.json, Self.libraryType]
         panel.allowsMultipleSelection = true
-        panel.message = "Choose Tactile Lab profile files."
+        panel.message = "Choose Tactile Lab profile exports (.json) or Tactile profiles (.tactileprofile)."
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
             do { try store.importProfiles(from: url) } catch { session.showError(error) }
         }
     }
 
-    private func export(_ ids: Set<UUID>?, suggested: String) {
+    private func export(_ ids: Set<String>?, suggested: String) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = suggested.replacingOccurrences(of: "/", with: "-")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try store.export(ids, to: url) } catch { session.showError(error) }
+    }
+
+    static let libraryType = UTType(filenameExtension: ControllerProfile.fileExtension, conformingTo: .json) ?? .json
+
+    private func exportLibrary(_ profile: LabProfile) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [Self.libraryType]
+        panel.nameFieldStringValue = "\(profile.name).\(ControllerProfile.fileExtension)".replacingOccurrences(of: "/", with: "-")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try profile.controllerProfile.encoded().write(to: url, options: .atomic) } catch { session.showError(error) }
     }
 }

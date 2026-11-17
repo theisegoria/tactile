@@ -39,7 +39,9 @@ actor ControllerOperations {
         await cleanup.value
     }
 
-    func perform(_ command: LabCommand, duration: Double) async throws -> OperationResult {
+    /// - Parameter hapticGain: master gain (0–1) for the haptics mixer, from the
+    ///   active profile; set before any haptic command runs.
+    func perform(_ command: LabCommand, duration: Double, hapticGain: Float = 1) async throws -> OperationResult {
         guard duration.isFinite, (0.1...60).contains(duration) else { throw LabError.invalid("Duration must be 0.1–60 seconds.") }
         guard let target else { throw LabError.noController }
         generation &+= 1
@@ -50,7 +52,7 @@ actor ControllerOperations {
             await previous?.value
             try Task.checkCancellation()
             do {
-                let result = try await Self.execute(command, on: target, duration: duration)
+                let result = try await Self.execute(command, on: target, duration: duration, hapticGain: hapticGain)
                 await Self.reset(target)
                 return result
             } catch {
@@ -75,13 +77,19 @@ actor ControllerOperations {
         await controller.neutralize()
     }
 
-    private static func execute(_ command: LabCommand, on target: LabTarget, duration: Double) async throws -> OperationResult {
+    /// Sets the mixer's master gain, clamped to 0–1 like `ControllerProfile.clampedGain`.
+    static func applyHapticGain(_ gain: Float, to mixer: HapticsMixer) {
+        mixer.setGain(gain.isNaN ? 1 : min(max(gain, 0), 1))
+    }
+
+    private static func execute(_ command: LabCommand, on target: LabTarget, duration: Double, hapticGain: Float) async throws -> OperationResult {
         if case .simulated(_, let fails) = target {
             if fails { throw LabError.simulatedFailure }
             try await Task.sleep(for: .seconds(duration))
             return OperationResult(summary: "Simulated request completed; no controller output was sent.")
         }
         guard let c = target.controller, c.isConnected else { throw LabError.noController }
+        if command.sendsHaptics { applyHapticGain(hapticGain, to: c.haptics) }
         let result: OperationResult
         switch command {
         case .output(let output):

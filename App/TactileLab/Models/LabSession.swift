@@ -50,6 +50,11 @@ final class LabSession {
     private(set) var candidates: [UplinkCandidate] = []
     private(set) var recordings: [String] = []
     var duration = 3.0
+    /// The profile store whose active profile sets the haptics master gain.
+    @ObservationIgnored weak var profiles: LabProfileStore?
+    /// Master gain (0–1) every haptic is sent with: the active profile's
+    /// `ControllerProfile.hapticGain`, or unity with no active profile.
+    var hapticGain: Float { profiles?.activeHapticGain ?? 1 }
     var exclusive = false
     private(set) var appliedExclusive = false
     private(set) var simulated: Bool
@@ -279,7 +284,9 @@ final class LabSession {
         microphonePermissionTask?.cancel(); microphonePermissionTask = nil
         let epoch = operationGeneration
         outputTask?.cancel()
-        let receipt = OperationReceipt(deviceID: selectedID, name: name, requestedSettings: "\(settings); duration=\(duration)s", simulated: simulated, diagnostics: diagnostics)
+        let gain = hapticGain
+        let gainNote = command.sendsHaptics && gain != 1 ? "; haptic gain=\(String(format: "%.2f", gain)) (active profile)" : ""
+        let receipt = OperationReceipt(deviceID: selectedID, name: name, requestedSettings: "\(settings); duration=\(duration)s\(gainNote)", simulated: simulated, diagnostics: diagnostics)
         operations.append(receipt)
         if operations.count > 500 { operations.removeFirst(operations.count - 500) }
         if let guidedID, let index = observations.firstIndex(where: { $0.id == guidedID }) {
@@ -294,7 +301,7 @@ final class LabSession {
         outputTask = Task {
             do {
                 try Task.checkCancellation()
-                let result = try await output.perform(command, duration: duration)
+                let result = try await output.perform(command, duration: duration, hapticGain: gain)
                 finish(receipt.id, result: result.summary, metrics: result.metrics)
                 if let index = operations.firstIndex(where: { $0.id == receipt.id }) {
                     operations[index].candidateLayouts = result.candidates

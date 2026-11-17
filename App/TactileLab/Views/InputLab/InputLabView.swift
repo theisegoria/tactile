@@ -87,6 +87,9 @@ struct InputLabView: View {
                         Button("Load Recording…", systemImage: "folder") { load() }
                         Button("Save Recording…", systemImage: "square.and.arrow.down") { save() }
                             .disabled(store.loadedRecording == nil)
+                        Button("Export as InputRecording…", systemImage: "square.and.arrow.up") { exportLibraryRecording() }
+                            .disabled(store.loadedRecording == nil)
+                            .help("Saves the frames as a Tactile .tactileinput file for InputAnalysis or tactilectl.")
                         Button("Replay Loaded Recording", systemImage: "play") { if let r = store.loadedRecording { store.replay(r) } }
                             .disabled(store.loadedRecording == nil)
                         Divider()
@@ -203,6 +206,13 @@ struct InputLabView: View {
         guard let recording = recording ?? store.loadedRecording else { return }
         let stamp = recording.createdAt.formatted(.iso8601).replacingOccurrences(of: ":", with: "-")
         guard let url = InputLabFiles.chooseSaveURL(suggested: "Input recording \(stamp).json") else { return }
+        do { try store.save(recording, to: url) } catch { session.showError(error) }
+    }
+
+    private func exportLibraryRecording() {
+        guard let recording = store.loadedRecording else { return }
+        let stamp = recording.createdAt.formatted(.iso8601).replacingOccurrences(of: ":", with: "-")
+        guard let url = InputLabFiles.chooseSaveURL(suggested: "Input recording \(stamp).\(InputRecording.fileExtension)", library: true) else { return }
         do { try store.save(recording, to: url) } catch { session.showError(error) }
     }
 

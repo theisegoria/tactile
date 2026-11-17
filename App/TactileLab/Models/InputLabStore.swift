@@ -13,7 +13,8 @@ import UniformTypeIdentifiers
 final class InputLabStore {
     enum Source: Equatable { case live, replay }
 
-    let analyzer: any InputLabAnalyzing
+    /// Library-backed analysis (`InputAnalysis`).
+    let analyzer: TactileInputAnalyzer
     /// Analysis window: about a minute of frames at the display rate.
     var frameCapacity = 2_000
     var reportCapacity = 2_000
@@ -31,8 +32,7 @@ final class InputLabStore {
     private(set) var loadedRecording: InputLabRecording?
     private(set) var message: String?
 
-    private var restLeft: [StickPoint] = []
-    private var restRight: [StickPoint] = []
+    private var rest: [InputRecording.Sample] = []
     private var restUntil: Double?
     private var lastRawID: UInt64?
     private var origin: Double?
@@ -41,10 +41,10 @@ final class InputLabStore {
     private var lastAnalysis = -Double.infinity
     private let clock: @MainActor () -> Double
 
-    init(analyzer: any InputLabAnalyzing = InputLabAnalyzer(), clock: @escaping @MainActor () -> Double = { Date().timeIntervalSinceReferenceDate }) {
+    init(analyzer: TactileInputAnalyzer = TactileInputAnalyzer(), clock: @escaping @MainActor () -> Double = { Date().timeIntervalSinceReferenceDate }) {
         self.analyzer = analyzer
         self.clock = clock
-        results = InputLabResults.compute(frames: [], restLeft: [], restRight: [], reportTimes: [], analyzer: analyzer)
+        results = InputLabResults.compute(frames: [], rest: [], reportTimes: [], analyzer: analyzer)
     }
 
     var trailLeft: [StickPoint] { frames.suffix(trailLength).map(\.left) }
@@ -89,14 +89,14 @@ final class InputLabStore {
 
     /// Starts a rest window: leave both sticks untouched for `seconds`.
     func measureRest(seconds: Double = 3) {
-        restLeft = []; restRight = []
+        rest = []
         measuringRest = true
         restUntil = (current?.t ?? 0) + seconds
         message = "Leave both sticks untouched for \(Int(seconds)) seconds…"
     }
 
     func reset() {
-        frames = []; reportTimes = []; restLeft = []; restRight = []
+        frames = []; reportTimes = []; rest = []
         restUntil = nil; measuringRest = false; current = nil; origin = nil; lastRawID = nil
         message = nil
         analyze(force: true)
@@ -106,7 +106,7 @@ final class InputLabStore {
         let now = current?.t ?? 0
         guard force || now - lastAnalysis >= 0.25 || now < lastAnalysis else { return }
         lastAnalysis = now
-        results = InputLabResults.compute(frames: frames, restLeft: restLeft, restRight: restRight, reportTimes: reportTimes, analyzer: analyzer)
+        results = InputLabResults.compute(frames: frames, rest: rest, reportTimes: reportTimes, analyzer: analyzer)
     }
 
     // MARK: Recording
@@ -186,16 +186,29 @@ final class InputLabStore {
 
     // MARK: Files
 
+    /// Saves as Input Lab JSON, or as the library's `InputRecording` when the
+    /// URL ends in `.tactileinput` (frames only: report times are dropped).
     func save(_ recording: InputLabRecording, to url: URL) throws {
-        try recording.encoded().write(to: url, options: .atomic)
+        let data = url.pathExtension == InputRecording.fileExtension ? try recording.libraryRecording.encoded() : try recording.encoded()
+        try data.write(to: url, options: .atomic)
         message = "Saved \(url.lastPathComponent)."
     }
 
+    /// Loads an Input Lab JSON recording or a library `.tactileinput` file.
     func load(from url: URL) throws -> InputLabRecording {
-        let recording = try InputLabRecording.decode(Data(contentsOf: url))
+        let recording = try Self.decodeRecording(Data(contentsOf: url), pathExtension: url.pathExtension)
         loadedRecording = recording
         message = "Loaded \(url.lastPathComponent): \(recording.frames.count) frames."
         return recording
+    }
+
+    /// Picks the format by extension; for anything else, Input Lab JSON first, then the library format.
+    nonisolated static func decodeRecording(_ data: Data, pathExtension: String) throws -> InputLabRecording {
+        if pathExtension == InputRecording.fileExtension { return InputLabRecording(try InputRecording(data: data)) }
+        do { return try InputLabRecording.decode(data) } catch let labError {
+            guard let library = try? InputRecording(data: data) else { throw labError }
+            return InputLabRecording(library)
+        }
     }
 
     func clearMessage() { message = nil }
@@ -238,8 +251,8 @@ final class InputLabStore {
         frames.append(frame)
         if frames.count > frameCapacity { frames.removeFirst(frames.count - frameCapacity) }
         if measuringRest, let until = restUntil {
-            if frame.t <= until { restLeft.append(frame.left); restRight.append(frame.right) }
-            else { measuringRest = false; restUntil = nil; message = "Rest measured from \(restLeft.count) samples."; analyze(force: true); return }
+            if frame.t <= until { rest.append(frame.sample) }
+            else { measuringRest = false; restUntil = nil; message = "Rest measured from \(rest.count) samples."; analyze(force: true); return }
         }
         analyze()
     }
@@ -251,7 +264,7 @@ final class InputLabStore {
     }
 
     private func clearForReplay() {
-        frames = []; reportTimes = []; restLeft = []; restRight = []
+        frames = []; reportTimes = []; rest = []
         restUntil = nil; measuringRest = false; current = nil; origin = nil; lastRawID = nil
         replayProgress = 0; lastAnalysis = -.infinity
     }
@@ -259,19 +272,23 @@ final class InputLabStore {
 
 /// File panels for the Input Lab (main-thread, modal).
 @MainActor enum InputLabFiles {
-    static func chooseSaveURL(suggested: String) -> URL? {
+    static let libraryType = UTType(filenameExtension: InputRecording.fileExtension, conformingTo: .json) ?? .json
+
+    static func chooseSaveURL(suggested: String, library: Bool = false) -> URL? {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [library ? libraryType : .json]
         panel.nameFieldStringValue = suggested
-        panel.message = "Save the input recording as JSON. It replays without a controller."
+        panel.message = library
+            ? "Export the frames as a Tactile InputRecording (.tactileinput) for InputAnalysis or tactilectl. Report times are not included."
+            : "Save the input recording as JSON. It replays without a controller."
         return panel.runModal() == .OK ? panel.url : nil
     }
 
     static func chooseOpenURL() -> URL? {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [.json, libraryType]
         panel.allowsMultipleSelection = false
-        panel.message = "Choose an Input Lab recording."
+        panel.message = "Choose an Input Lab recording (.json) or a Tactile InputRecording (.tactileinput)."
         return panel.runModal() == .OK ? panel.url : nil
     }
 

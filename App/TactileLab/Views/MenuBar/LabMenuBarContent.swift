@@ -101,8 +101,8 @@ struct LabMenuBarContent: View {
                             if let id, let profile = profiles.profiles.first(where: { $0.id == id }) { profiles.apply(profile, to: session) }
                             else { profiles.setActive(nil) }
                         })) {
-                        Text("None").tag(UUID?.none)
-                        ForEach(profiles.profiles) { profile in Text(profile.name).tag(UUID?.some(profile.id)) }
+                        Text("None").tag(String?.none)
+                        ForEach(profiles.profiles) { profile in Text(profile.name).tag(String?.some(profile.id)) }
                     }
                     .labelsHidden()
                     .disabled(!session.canOperate)

@@ -115,6 +115,7 @@ import Tactile
         #expect(markdown.contains("# Controller health report"))
         #expect(markdown.contains("Recommended dead zone"))
         #expect(markdown.contains("p99"))
+        #expect(markdown.contains("Circularity error (RMS)"))
         #expect(markdown.contains("SIMULATED"))
         #expect(markdown.contains("Battery: 75%"))
         let json = try JSONSerialization.jsonObject(with: report.json()) as? [String: Any]
@@ -129,9 +130,10 @@ import Tactile
     }
 
     @Test func findingsFlagDriftAndPartialTriggers() {
-        var results = InputLabResults.compute(frames: [], restLeft: [], restRight: [], reportTimes: [], analyzer: InputLabAnalyzer())
-        results.leftDrift = InputLabAnalyzer().drift(resting: Array(repeating: StickPoint(x: 0.15, y: 0), count: 10))
-        results.l2 = TriggerRange(minimum: 0, maximum: 200, sampleCount: 10)
+        var results = InputLabResults.compute(frames: [], rest: [], reportTimes: [])
+        let resting = (0..<10).map { InputLabFrame(t: Double($0) * 0.01, left: SIMD2(148, 128), right: SIMD2(128, 128), l2: 0, r2: 0, buttons: 0).sample }
+        results.leftDrift = TactileInputAnalyzer().drift(resting, stick: .left, restWindow: true)
+        results.l2 = TriggerRange(minimum: 0, maximum: 200, sampleCount: 10, reachesFullPull: false, returnsToRest: true)
         let report = InputLabHealthReport(appVersion: "t", libraryVersion: "t", deviceName: "d", deviceID: nil, model: "m", simulated: false,
                                           source: "Live controller", firmware: nil, batteryPercent: nil, batteryState: nil, samples: 10, results: results)
         #expect(report.findings.contains { $0.hasPrefix("Left stick rests") })
