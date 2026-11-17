@@ -72,6 +72,7 @@ public final class SystemAudioHapticsSource: NSObject, @unchecked Sendable {
     private let lock = NSLock()
     private var activeStream: SCStream?
     private let level = Atomic<UInt32>(0)
+    private let reduction = Atomic<UInt32>(0)
     private let stoppedError = Mutex<String?>(nil)
 
     /// Creates the source. Nothing is captured until `start()`.
@@ -113,6 +114,9 @@ public final class SystemAudioHapticsSource: NSObject, @unchecked Sendable {
 
     /// Linear peak envelope after the filter chain (0…), for a level meter.
     public var currentLevel: Float { Float(bitPattern: level.load(ordering: .relaxed)) }
+
+    /// Compressor gain reduction on the last buffer, dB (0 = none), for a meter.
+    public var currentGainReductionDB: Float { Float(bitPattern: reduction.load(ordering: .relaxed)) }
 
     /// 3 kHz frames dropped because the mixer stream was full.
     public var droppedFrames: Int { pipeline.input.droppedFrames }
@@ -210,6 +214,7 @@ public final class SystemAudioHapticsSource: NSObject, @unchecked Sendable {
             }
         }
         level.store(pipeline.chain.lastEnvelope.bitPattern, ordering: .relaxed)
+        reduction.store(pipeline.chain.gainReductionDB.bitPattern, ordering: .relaxed)
     }
 }
 

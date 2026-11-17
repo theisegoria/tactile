@@ -124,6 +124,8 @@ actor ControllerOperations {
             _ = try await boundedPlayback(duration: duration) { try await c.play(pattern) }
             let controls = pattern.controlTimeline().count
             result = OperationResult(summary: "Pattern played (\(controls) trigger/lightbar changes). Felt result remains unverified.")
+        case .systemAudio(let request):
+            result = try await Self.executeSystemAudio(request, on: c, duration: duration)
         case .sharedSpeaker(let url, let gain, let routing, let destination):
             result = try await Self.executeSharedSpeaker(url: url, gain: gain, routing: routing, destination: destination, on: c, duration: duration)
         case .scan:

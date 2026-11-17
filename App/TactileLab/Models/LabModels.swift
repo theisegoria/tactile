@@ -153,6 +153,9 @@ enum LabCommand: Sendable {
     /// A Composer pattern, played by the library's `HapticPatternPlayer`
     /// (actuator PCM streamed, trigger and lightbar changes on schedule).
     case pattern(HapticPattern)
+    /// System audio (or one app) into the actuators through the library's
+    /// filter chain; needs Screen Recording permission (Tactile 0.4).
+    case systemAudio(SystemAudioRequest)
     /// Speaker audio on the haptics pump's shared 0x36 stream (Tactile 0.3).
     case sharedSpeaker(URL, Float, AudioSettings, SpeakerAudioFraming.Destination)
 }

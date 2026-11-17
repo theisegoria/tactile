@@ -33,6 +33,7 @@ struct EffectsView: View {
                 }
                 hapticsCard
                 audioHapticsCard
+                SystemAudioHapticsCard(session: session)
             }
             .padding(24)
             .frame(maxWidth: 1100)
