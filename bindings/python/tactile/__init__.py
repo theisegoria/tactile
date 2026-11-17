@@ -17,12 +17,14 @@ from typing import Optional, Sequence
 
 __all__ = [
     "ABI_VERSION_MAJOR", "TactileError", "Context", "Controller", "InputState", "ControllerInfo",
-    "TriggerEffect", "Button", "HapticsMetrics", "load_library",
+    "TriggerEffect", "Button", "HapticsMetrics", "Pattern", "load_library",
 ]
 
 ABI_VERSION_MAJOR = 0
 # Players (split screen) need ABI 0.2 or later.
 ABI_VERSION_MINOR_PLAYERS = 2
+# Trigger presets, haptic patterns and profiles need ABI 0.4 or later.
+ABI_VERSION_MINOR_PATTERNS = 4
 
 # ---- result codes and enums (tactile.h) ------------------------------------
 
@@ -37,6 +39,9 @@ HAPTIC_LEFT, HAPTIC_RIGHT, HAPTIC_BOTH = 0, 1, 2
 HAPTIC_CLICK, HAPTIC_DETENT, HAPTIC_TEXTURE, HAPTIC_IMPACT = 0, 1, 2, 3
 EVENT_CONNECTED, EVENT_RECONNECTED, EVENT_DISCONNECTED, EVENT_PLAYER_CHANGED = 0, 1, 2, 3
 PERMISSION_GRANTED, PERMISSION_DENIED, PERMISSION_NOT_DETERMINED = 0, 1, 2
+# ABI 0.4 trigger presets (tactile_trigger_preset).
+(TRIGGER_PRESET_OFF, TRIGGER_PRESET_WEAPON, TRIGGER_PRESET_BOW, TRIGGER_PRESET_BRAKE,
+ TRIGGER_PRESET_CLICK, TRIGGER_PRESET_MACHINE_GUN, TRIGGER_PRESET_GALLOP) = range(7)
 
 
 class Button:
@@ -164,6 +169,11 @@ class TriggerEffect(C.Structure):
     def machine(start: int, end: int, amplitude_a: int, amplitude_b: int, frequency: int, period: int) -> "TriggerEffect":
         return TriggerEffect._build(_lib().tactile_trigger_machine, start, end, amplitude_a, amplitude_b, frequency, period)
 
+    @staticmethod
+    def preset(preset: int) -> "TriggerEffect":
+        """A named preset (TRIGGER_PRESET_*). ABI 0.4."""
+        return TriggerEffect._build(_lib().tactile_trigger_from_preset, preset)
+
 
 _EventCallback = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p, C.c_int32)
 
@@ -254,6 +264,18 @@ def _annotate(lib: C.CDLL) -> None:
         "tactile_haptics_play": (i32, [vp, i32, C.c_float, i32]),
         "tactile_haptics_write_pcm": (i32, [vp, P(C.c_float), i32, i32, C.c_double]),
         "tactile_haptics_get_metrics": (i32, [vp, P(_HapticsMetrics)]),
+        # ABI 0.4
+        "tactile_trigger_from_preset": (i32, [i32, P(TriggerEffect)]),
+        "tactile_pattern_load_file": (i32, [C.c_char_p, P(vp)]),
+        "tactile_pattern_load_json": (i32, [C.c_char_p, C.c_size_t, C.c_char_p, P(vp)]),
+        "tactile_pattern_free": (None, [vp]),
+        "tactile_pattern_duration": (C.c_double, [vp]),
+        "tactile_pattern_render": (i32, [vp, P(C.c_float), P(C.c_float), i32]),
+        "tactile_pattern_play": (i32, [vp, vp]),
+        "tactile_pattern_stop": (i32, [vp]),
+        "tactile_pattern_is_playing": (i32, [vp]),
+        "tactile_profile_apply_file": (i32, [vp, C.c_char_p]),
+        "tactile_profile_apply_json": (i32, [vp, C.c_char_p, C.c_size_t]),
     }
     for name, (res, args) in sig.items():
         if not hasattr(lib, name):  # older library: player calls appear in ABI 0.2
@@ -423,6 +445,80 @@ class Controller:
         m = _HapticsMetrics(); m.struct_size = C.sizeof(m)
         _check(_lib().tactile_haptics_get_metrics(self._h, C.byref(m)))
         return HapticsMetrics(m)
+
+    # ABI 0.4
+    def play_pattern(self, pattern: "Pattern") -> None:
+        """Starts a haptic pattern (non-blocking), replacing any pattern playing here."""
+        _check(_lib().tactile_pattern_play(self._h, pattern._handle()))
+
+    def stop_pattern(self) -> None:
+        _check(_lib().tactile_pattern_stop(self._h))
+
+    @property
+    def pattern_playing(self) -> bool:
+        return _check(_lib().tactile_pattern_is_playing(self._h)) == 1
+
+    def apply_profile(self, path: str) -> None:
+        """Applies a .tactileprofile file (lights, triggers, haptic gain)."""
+        _check(_lib().tactile_profile_apply_file(self._h, os.fsencode(path)))
+
+    def apply_profile_json(self, json_text: str) -> None:
+        data = json_text.encode("utf-8")
+        _check(_lib().tactile_profile_apply_json(self._h, data, len(data)))
+
+
+class Pattern:
+    """A loaded .tactilepattern (ABI 0.4). Rendered once at load; immutable."""
+
+    def __init__(self, handle: int):
+        self._h = C.c_void_p(handle)
+
+    @staticmethod
+    def load(path: str) -> "Pattern":
+        h = C.c_void_p()
+        _check(_lib().tactile_pattern_load_file(os.fsencode(path), C.byref(h)))
+        return Pattern(h.value)
+
+    @staticmethod
+    def from_json(json_text: str, clip_base_dir: Optional[str] = None) -> "Pattern":
+        data = json_text.encode("utf-8")
+        base = os.fsencode(clip_base_dir) if clip_base_dir is not None else None
+        h = C.c_void_p()
+        _check(_lib().tactile_pattern_load_json(data, len(data), base, C.byref(h)))
+        return Pattern(h.value)
+
+    def _handle(self) -> C.c_void_p:
+        if not self._h:
+            raise TactileError(ERR_INVALID_ARGUMENT, "pattern is closed")
+        return self._h
+
+    @property
+    def duration(self) -> float:
+        return _lib().tactile_pattern_duration(self._handle())
+
+    def render(self):
+        """Rendered haptic PCM at 3 kHz as two lists (left, right), -1..1."""
+        n = _lib().tactile_pattern_render(self._handle(), None, None, 0)
+        left, right = (C.c_float * n)(), (C.c_float * n)()
+        _lib().tactile_pattern_render(self._handle(), left, right, n)
+        return list(left), list(right)
+
+    def close(self) -> None:
+        if self._h:
+            _lib().tactile_pattern_free(self._h)
+            self._h = C.c_void_p()
+
+    def __enter__(self) -> "Pattern":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 # Set while an event callback runs on the library's callback thread, where

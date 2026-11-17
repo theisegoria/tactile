@@ -5,6 +5,7 @@
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -73,6 +74,15 @@ public:
     static PackedByteArray trigger_bow(int64_t start, int64_t end, int64_t strength, int64_t snap);
     static PackedByteArray trigger_galloping(int64_t start, int64_t end, int64_t foot1, int64_t foot2, int64_t freq);
     static PackedByteArray trigger_machine(int64_t start, int64_t end, int64_t a, int64_t b, int64_t freq, int64_t period);
+    // ABI 0.4: named preset (TRIGGER_PRESET_*).
+    static PackedByteArray trigger_preset(int64_t preset);
+
+    // Haptic patterns and profiles (ABI 0.4). Paths may be res:// or user://.
+    // The last loaded pattern is kept (reloaded when the path changes).
+    int64_t play_pattern_file(const String &path);
+    int64_t stop_pattern();
+    bool is_pattern_playing() const;
+    int64_t apply_profile_file(const String &path);
 
 protected:
     static void _bind_methods();
@@ -88,6 +98,8 @@ private:
 
     tactile_context *ctx = nullptr;  // borrowed from shared_ctx while in the tree
     tactile_controller *pad = nullptr;
+    tactile_pattern *pattern = nullptr;
+    String pattern_path;
     int64_t player = 0;
     bool player_lights = true;
     tactile_input_state state{};

@@ -67,6 +67,19 @@ namespace Tactile
         public void Play(HapticEffect e, float intensity = 1f, HapticSide side = HapticSide.Both) =>
             TactileException.Check(Native.tactile_haptics_play(handle, (int)e, intensity, (int)side));
 
+        /// <summary>Starts a haptic pattern (non-blocking), replacing any pattern playing on this controller. ABI 0.4.</summary>
+        public void PlayPattern(TactilePattern pattern)
+        {
+            if (pattern == null) throw new ArgumentNullException(nameof(pattern));
+            TactileException.Check(Native.tactile_pattern_play(handle, pattern.Handle));
+        }
+        public void StopPattern() => TactileException.Check(Native.tactile_pattern_stop(handle));
+        public bool IsPatternPlaying => TactileException.Check(Native.tactile_pattern_is_playing(handle)) == 1;
+        /// <summary>Applies a .tactileprofile file: lightbar, player LEDs, triggers, haptic gain. ABI 0.4.</summary>
+        public void ApplyProfile(string path) => TactileException.Check(Native.tactile_profile_apply_file(handle, path));
+        public void ApplyProfileJson(string json) =>
+            TactileException.Check(Native.tactile_profile_apply_json(handle, json, UIntPtr.Zero));
+
         /// <summary>Feeds audio (e.g. from OnAudioFilterRead) to the voice coils. One producer thread.
         /// Safe to race with Dispose: once disposed it returns Result.NotConnected.</summary>
         public int WritePcm(float[] interleaved, int channels, int sampleRate)
@@ -89,6 +102,47 @@ namespace Tactile
         }
     }
 
+    /// <summary>A loaded .tactilepattern (ABI 0.4): rendered once at load, immutable,
+    /// playable on several controllers. Playback keeps its own reference, so disposing
+    /// the pattern does not stop it.</summary>
+    public sealed class TactilePattern : IDisposable
+    {
+        IntPtr handle;
+        TactilePattern(IntPtr h) { handle = h; }
+        internal IntPtr Handle => handle != IntPtr.Zero ? handle : throw new ObjectDisposedException(nameof(TactilePattern));
+
+        /// <summary>Loads a file; audio clip paths resolve against its folder.</summary>
+        public static TactilePattern Load(string path)
+        {
+            TactileException.Check(Native.tactile_pattern_load_file(path, out var h));
+            return new TactilePattern(h);
+        }
+
+        public static TactilePattern FromJson(string json, string clipBaseDir = null)
+        {
+            TactileException.Check(Native.tactile_pattern_load_json(json, UIntPtr.Zero, clipBaseDir, out var h));
+            return new TactilePattern(h);
+        }
+
+        public double Duration => Native.tactile_pattern_duration(Handle);
+
+        /// <summary>The rendered haptic PCM (3 kHz, -1..1) for drawing a waveform.</summary>
+        public void Render(out float[] left, out float[] right)
+        {
+            int n = Native.tactile_pattern_render(Handle, null, null, 0);
+            left = new float[n]; right = new float[n];
+            Native.tactile_pattern_render(Handle, left, right, n);
+        }
+
+        public void Dispose()
+        {
+            if (handle != IntPtr.Zero) { Native.tactile_pattern_free(handle); handle = IntPtr.Zero; }
+            GC.SuppressFinalize(this);
+        }
+
+        ~TactilePattern() { if (handle != IntPtr.Zero) Native.tactile_pattern_free(handle); }
+    }
+
     public static class Triggers
     {
         static TriggerEffect Build(Func<TriggerEffect, (int, TriggerEffect)> f)
@@ -98,6 +152,8 @@ namespace Tactile
             TactileException.Check(r);
             return outE;
         }
+        /// <summary>A named preset (ABI 0.4).</summary>
+        public static TriggerEffect Preset(TriggerPreset preset) => Build(e => (Native.tactile_trigger_from_preset((int)preset, ref e), e));
         public static TriggerEffect Off() { var e = new TriggerEffect { bytes = new byte[11] }; Native.tactile_trigger_off(ref e); return e; }
         public static TriggerEffect Feedback(int position, int strength) => Build(e => (Native.tactile_trigger_feedback(position, strength, ref e), e));
         public static TriggerEffect Weapon(int start, int end, int strength) => Build(e => (Native.tactile_trigger_weapon(start, end, strength, ref e), e));

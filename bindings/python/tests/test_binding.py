@@ -98,5 +98,40 @@ class PlayerBindingTests(unittest.TestCase):
         self.assertEqual(t.EVENT_PLAYER_CHANGED, 3)
 
 
+class ABI04BindingTests(unittest.TestCase):
+    PATTERN = (
+        '{"schemaVersion":1,"tracks":[{"name":"t","events":['
+        '{"time":0,"type":"effect","effect":{"impact":{"intensity":1}},"side":"both"}]}]}'
+    )
+
+    def test_presets(self):
+        lib = t.load_library()
+        self.assertGreaterEqual(lib.tactile_abi_version() & 0xFFFF, t.ABI_VERSION_MINOR_PATTERNS)
+        self.assertEqual(t.TriggerEffect.preset(t.TRIGGER_PRESET_WEAPON).hex(), t.TriggerEffect.weapon(2, 6, 8).hex())
+        self.assertEqual(t.TriggerEffect.preset(t.TRIGGER_PRESET_OFF).hex(), t.TriggerEffect.off().hex())
+        with self.assertRaises(t.TactileError):
+            t.TriggerEffect.preset(42)
+
+    def test_pattern_render(self):
+        with t.Pattern.from_json(self.PATTERN) as p:
+            self.assertAlmostEqual(p.duration, 0.12, places=3)
+            left, right = p.render()
+            self.assertEqual(len(left), 360)
+            self.assertGreater(max(left), 0.2)
+            self.assertEqual(left, right)
+        with self.assertRaises(t.TactileError) as e:
+            t.Pattern.from_json('{"schemaVersion":9}')
+        self.assertEqual(e.exception.code, t.ERR_VERSION)
+        with self.assertRaises(t.TactileError) as e:
+            t.Pattern.load("/nonexistent/x.tactilepattern")
+        self.assertEqual(e.exception.code, t.ERR_NOT_FOUND)
+
+    def test_pattern_and_profile_calls_reject_null(self):
+        lib = t.load_library()
+        self.assertEqual(lib.tactile_pattern_stop(None), t.ERR_INVALID_ARGUMENT)
+        self.assertEqual(lib.tactile_pattern_is_playing(None), t.ERR_INVALID_ARGUMENT)
+        self.assertEqual(lib.tactile_profile_apply_json(None, b"{}", 2), t.ERR_INVALID_ARGUMENT)
+
+
 if __name__ == "__main__":
     unittest.main()

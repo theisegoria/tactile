@@ -1,4 +1,5 @@
 #include "TactileSubsystem.h"
+#include "Misc/Paths.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "tactile.h"
@@ -52,6 +53,8 @@ void UTactileSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UTactileSubsystem::Deinitialize()
 {
+    for (TPair<FString, tactile_pattern*>& P : Patterns) { tactile_pattern_free(P.Value); }
+    Patterns.Empty();
     if (Pad) { tactile_controller_release(Pad); Pad = nullptr; }
     for (FPlayerSlotState& P : Players)
     {
@@ -157,6 +160,40 @@ FTactileTriggerEffect UTactileSubsystem::TriggerSlopeFeedback(int32 SP, int32 EP
 FTactileTriggerEffect UTactileSubsystem::TriggerBow(int32 A, int32 B, int32 S, int32 N) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_bow(A, B, S, N, &E), E); }
 FTactileTriggerEffect UTactileSubsystem::TriggerGalloping(int32 A, int32 B, int32 F1, int32 F2, int32 F) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_galloping(A, B, F1, F2, F, &E), E); }
 FTactileTriggerEffect UTactileSubsystem::TriggerMachine(int32 A, int32 B, int32 X, int32 Y, int32 F, int32 P) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_machine(A, B, X, Y, F, P, &E), E); }
+FTactileTriggerEffect UTactileSubsystem::TriggerPreset(ETactileTriggerPreset Preset) { tactile_trigger_effect E{}; return ToEffect(tactile_trigger_from_preset(static_cast<int32>(Preset), &E), E); }
+
+tactile_pattern* UTactileSubsystem::LoadPattern(const FString& Path)
+{
+    const FString Full = FPaths::IsRelative(Path) ? FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir(), Path) : Path;
+    if (tactile_pattern** Cached = Patterns.Find(Full)) { return *Cached; }
+    tactile_pattern* Pattern = nullptr;
+    const int32 R = tactile_pattern_load_file(TCHAR_TO_UTF8(*Full), &Pattern);
+    if (R != TACTILE_OK)
+    {
+        UE_LOG(LogTactile, Warning, TEXT("Tactile: cannot load pattern %s (%s)"), *Full, UTF8_TO_TCHAR(tactile_result_string(R)));
+        return nullptr;
+    }
+    Patterns.Add(Full, Pattern);
+    return Pattern;
+}
+
+bool UTactileSubsystem::PlayPatternFile(const FString& Path)
+{
+    if (!Pad) return false;
+    tactile_pattern* Pattern = LoadPattern(Path);
+    return Pattern && tactile_pattern_play(Pad, Pattern) == TACTILE_OK;
+}
+
+void UTactileSubsystem::StopPattern() { if (Pad) tactile_pattern_stop(Pad); }
+
+bool UTactileSubsystem::IsPatternPlaying() const { return Pad && tactile_pattern_is_playing(Pad) == 1; }
+
+bool UTactileSubsystem::ApplyProfileFile(const FString& Path)
+{
+    if (!Pad) return false;
+    const FString Full = FPaths::IsRelative(Path) ? FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir(), Path) : Path;
+    return tactile_profile_apply_file(Pad, TCHAR_TO_UTF8(*Full)) == TACTILE_OK;
+}
 
 // ---- Players ----
 

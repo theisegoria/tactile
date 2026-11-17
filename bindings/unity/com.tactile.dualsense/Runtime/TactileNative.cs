@@ -15,6 +15,8 @@ namespace Tactile
     public enum MuteLed : int { Off = 0, On = 1, Pulse = 2 }
     public enum HapticSide : int { Left = 0, Right = 1, Both = 2 }
     public enum HapticEffect : int { Click = 0, Detent = 1, Texture = 2, Impact = 3 }
+    /// <summary>Named trigger effects (ABI 0.4). Bow, MachineGun and Gallop use unofficial effects.</summary>
+    public enum TriggerPreset : int { Off = 0, Weapon = 1, Bow = 2, Brake = 3, Click = 4, MachineGun = 5, Gallop = 6 }
     public enum ControllerEvent : int { Connected = 0, Reconnected = 1, Disconnected = 2, PlayerChanged = 3 }
     public enum Permission : int { Granted = 0, Denied = 1, NotDetermined = 2 }
 
@@ -145,6 +147,21 @@ namespace Tactile
         [DllImport(Lib)] public static extern int tactile_haptics_stop(IntPtr controller);
         [DllImport(Lib)] public static extern int tactile_haptics_play(IntPtr controller, int effect, float intensity, int side);
         [DllImport(Lib)] public static extern int tactile_haptics_write_pcm(IntPtr controller, float[] interleaved, int frames, int channels, double sampleRate);
+
+        // ABI 0.4: trigger presets, haptic patterns, profiles.
+        public const int AbiMinorPatterns = 4;
+        [DllImport(Lib)] public static extern int tactile_trigger_from_preset(int preset, ref TriggerEffect e);
+        [DllImport(Lib)] public static extern int tactile_pattern_load_file([MarshalAs(UnmanagedType.LPUTF8Str)] string path, out IntPtr pattern);
+        [DllImport(Lib)] public static extern int tactile_pattern_load_json([MarshalAs(UnmanagedType.LPUTF8Str)] string json, UIntPtr length,
+                                                                        [MarshalAs(UnmanagedType.LPUTF8Str)] string clipBaseDir, out IntPtr pattern);
+        [DllImport(Lib)] public static extern void tactile_pattern_free(IntPtr pattern);
+        [DllImport(Lib)] public static extern double tactile_pattern_duration(IntPtr pattern);
+        [DllImport(Lib)] public static extern int tactile_pattern_render(IntPtr pattern, float[] left, float[] right, int capacityFrames);
+        [DllImport(Lib)] public static extern int tactile_pattern_play(IntPtr controller, IntPtr pattern);
+        [DllImport(Lib)] public static extern int tactile_pattern_stop(IntPtr controller);
+        [DllImport(Lib)] public static extern int tactile_pattern_is_playing(IntPtr controller);
+        [DllImport(Lib)] public static extern int tactile_profile_apply_file(IntPtr controller, [MarshalAs(UnmanagedType.LPUTF8Str)] string path);
+        [DllImport(Lib)] public static extern int tactile_profile_apply_json(IntPtr controller, [MarshalAs(UnmanagedType.LPUTF8Str)] string json, UIntPtr length);
 
         public static string ResultString(int r) => Marshal.PtrToStringAnsi(tactile_result_string(r));
     }
